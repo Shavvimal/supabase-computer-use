@@ -49,9 +49,7 @@ class AnthropicActor:
         # Instantiate the Anthropic API client
         self.client = Anthropic(api_key=self.api_key)
         # Pass tools to the assistant but we won't execute them on the server
-        self.tool_collection = ToolCollection(
-            ComputerTool(),
-        )
+        self.tool_collection = None
 
     def __call__(
         self,
@@ -62,6 +60,20 @@ class AnthropicActor:
         # Generate system prompt with metadata
         system = self.generate_system_prompt(metadata)
 
+
+
+        # Extract window size from metadata
+        width = 1920  # Default values
+        height = 1080
+        if metadata and 'window' in metadata:
+            window_info = metadata['window']
+            width = window_info.get('innerWidth', 1920)
+            height = window_info.get('innerHeight', 1080)
+
+        # Initialize the tool collection with the correct window size
+        self.tool_collection = ToolCollection(
+            ComputerTool(width=width, height=height),
+        )
 
         # Call the API synchronously
         raw_response = self.client.beta.messages.with_raw_response.create(
@@ -96,5 +108,11 @@ class AnthropicActor:
             system_prompt += f"* Window Info: {metadata.get('window', {})}\n"
             system_prompt += f"* Connection Info: {metadata.get('connection', {})}\n"
             system_prompt += "</SYSTEM_METADATA>\n"
+
+            window_info = metadata.get('window', {})
+            screen_info = metadata.get('screen', {})
+            system_prompt += f"* Window Size: {window_info.get('innerWidth')} x {window_info.get('innerHeight')}\n"
+            system_prompt += f"* Screen Size: {screen_info.get('width')} x {screen_info.get('height')}\n"
+
         return system_prompt
 

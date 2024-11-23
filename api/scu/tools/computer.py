@@ -43,10 +43,10 @@ class ComputerTool(BaseAnthropicTool):
     height: int
     display_num: int | None
 
-    def __init__(self, selected_screen: int = 0):
+    def __init__(self, width: int = 1920, height: int = 1080, selected_screen: int = 0):
         super().__init__()
-        self.width = 1920  # Default width
-        self.height = 1080 # Default height
+        self.width = width
+        self.height = height
         self.display_num = selected_screen
 
     @property
