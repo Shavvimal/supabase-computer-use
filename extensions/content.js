@@ -7,6 +7,12 @@ let messageHistory = [];
 // Add this at the top level of the file
 let audioContext = null;
 
+// Add this at the top level of the file
+let isProcessingTurn = false;
+
+// Add this at the top level of the file
+let pendingToolResults = [];
+
 // Function to simulate mouse movement
 function moveMouseTo(x, y) {
   return new Promise(resolve => {
@@ -69,26 +75,32 @@ function simulateKeyboard(text, isRawKey = false) {
 const MESSAGE_HANDLERS = {
   mouse_move: async (instruction) => {
     await moveMouseTo(instruction.coordinate[0], instruction.coordinate[1]);
+    return `Moved to (${instruction.coordinate[0]}, ${instruction.coordinate[1]})`;
   },
   
   left_click: async () => {
     await simulateClick('click');
+    return 'Performed left click';
   },
   
   right_click: async () => {
     await simulateClick('contextmenu');
+    return 'Performed right click';
   },
   
   double_click: async () => {
     await simulateClick('dblclick');
+    return 'Performed double click';
   },
   
   type: async (instruction) => {
     await simulateKeyboard(instruction.text);
+    return `Typed: ${instruction.text}`;
   },
   
   key: async (instruction) => {
     await simulateKeyboard(instruction.text, true);
+    return `Pressed key: ${instruction.text}`;
   },
   
   screenshot: async () => {
@@ -103,35 +115,40 @@ const MESSAGE_HANDLERS = {
     });
   },
   
-  cursor_position: (instruction, sendResponse) => {
-    sendResponse({
+  cursor_position: (instruction) => {
+    return {
       x: window.mouseX || 0,
       y: window.mouseY || 0
-    });
+    };
   },
   
   speak: async (instruction) => {
     if (instruction.text) {
       await textToSpeech(instruction.text);
+      return `Spoke text: ${instruction.text}`;
     }
+    return 'No text provided to speak';
   }
 };
 
-// Add this function to handle API calls
-async function sendToAPI(prompt) {
-  // Create user message block
-  const userBlock = {
-    type: "text",
-    content: {
-      text: prompt
-    }
-  };
+// Update the sendToAPI function
+async function sendToAPI(prompt, isFollowUp = false) {
+  let contentBlocks = [];
   
-  // Add user message to history with single block array
-  messageHistory.push({ 
-    role: 'user', 
-    content: [userBlock]
-  });
+  // Add user message if not a follow-up
+  if (!isFollowUp) {
+    contentBlocks.push({
+      type: "text",
+      content: { text: prompt }
+    });
+  }
+  
+  // Add any pending tool results
+  if (pendingToolResults.length > 0) {
+    contentBlocks.push(...pendingToolResults);
+    // Clear pending results after adding them
+    pendingToolResults = [];
+  }
 
   const response = await fetch('http://localhost:8000/agent', {
     method: 'POST',
@@ -140,7 +157,7 @@ async function sendToAPI(prompt) {
     },
     body: JSON.stringify({
       conversation_id: window.currentConversationId,
-      content_blocks: [userBlock],
+      content_blocks: contentBlocks,
       metadata: {
         screen: {
           width: window.screen.width,
@@ -185,39 +202,11 @@ async function sendToAPI(prompt) {
   const data = await response.json();
   window.currentConversationId = data.conversation_id;
   
-  // Add entire assistant response to history
+  // Add assistant response to history
   messageHistory.push({
     role: 'assistant',
     content: data.content
   });
-  
-  // Separate text blocks and tool_use blocks
-  const textBlocks = data.content.filter(block => block.type === 'text');
-  const toolBlocks = data.content.filter(block => block.type === 'tool_use');
-  
-  // Process text blocks
-  const audioPromises = textBlocks.map(block => {
-    const card = createMessageCard(block);
-    appendMessageCard(card);
-    return textToSpeech(block.content.text);
-  });
-
-  // Process tool blocks
-  const toolPromises = toolBlocks.map(async block => {
-    const card = createMessageCard(block);
-    appendMessageCard(card);
-    
-    if (block.content.name && block.content.input) {
-      const instruction = {
-        action: block.content.name,
-        ...block.content.input
-      };
-      await executeInstruction(instruction);
-    }
-  });
-
-  // Wait for all operations to complete
-  await Promise.all([...audioPromises, ...toolPromises]);
 
   return data;
 }
@@ -293,41 +282,33 @@ async function textToSpeech(text) {
 }
 
 // Update the executeInstruction function
-async function executeInstruction(instruction) {
+async function executeInstruction(instruction, toolUseId) {
   const handler = MESSAGE_HANDLERS[instruction.action];
   if (handler) {
-    // Create and add action card
-    // const card = createActionCard(instruction);
-    // const container = document.querySelector('.ai-floating-button');
-    // document.body.appendChild(card);
-    
-    // // Set initial position using CSS custom property
-    // const containerRect = container.getBoundingClientRect();
-    // card.style.setProperty('--card-bottom', `${containerRect.height + 20}px`);
-    
-    // // Adjust positions of existing cards
-    // const existingCards = document.querySelectorAll('.ai-action-card');
-    // existingCards.forEach((existingCard, index) => {
-    //   if (existingCard !== card) {
-    //     const newBottom = containerRect.height + 20 + ((index + 1) * 60);
-    //     existingCard.style.setProperty('--card-bottom', `${newBottom}px`);
-    //     existingCard.classList.add('stacked');
-    //     existingCard.style.setProperty('--stack-opacity', Math.max(0, 1 - (index * 0.2)));
-    //   }
-    // });
-    
-    // Execute the instruction
-    await handler(instruction);
-    
-    if (instruction.wait_ms) {
-      await new Promise(resolve => setTimeout(resolve, instruction.wait_ms));
+    try {
+      const result = await handler(instruction);
+      
+      // Create tool result object
+      const toolResult = {
+        type: "tool_result",
+        tool_use_id: toolUseId,
+        content: result || "success" // Default to "success" if no result returned
+      };
+      
+      pendingToolResults.push(toolResult);
+      return toolResult;
+    } catch (error) {
+      // Create error result
+      const errorResult = {
+        type: "tool_result",
+        tool_use_id: toolUseId,
+        content: error.message,
+        is_error: true
+      };
+      
+      pendingToolResults.push(errorResult);
+      return errorResult;
     }
-    
-    // Animate out and remove card after delay
-    // setTimeout(() => {
-    //   card.classList.add('removing');
-    //   setTimeout(() => card.remove(), 300);
-    // }, 2000);
   }
 }
 
@@ -383,17 +364,51 @@ function createFloatingButton() {
         submitButton.disabled = true;
         textarea.value = 'Processing...';
 
-        // Send to API instead of using mock data
-        const response = await sendToAPI(prompt);
+        // Set processing flag
+        isProcessingTurn = true;
 
-        // Process each content block from the response
-        for (const block of response.content) {
-          if (block.type === 'tool_use') {
-            // Convert tool_use block to instruction format
-            const instruction = convertToolUseToInstruction(block.content);
-            await executeInstruction(instruction);
+        // Initial API call with user prompt
+        let response = await sendToAPI(prompt);
+
+        // Continue processing until end_turn is true
+        while (isProcessingTurn) {
+          // Process text blocks
+          const textBlocks = response.content.filter(block => block.type === 'text');
+          const toolBlocks = response.content.filter(block => block.type === 'tool_use');
+          
+          // Process text blocks
+          const audioPromises = textBlocks.map(block => {
+            const card = createMessageCard(block);
+            appendMessageCard(card);
+            return textToSpeech(block.content.text);
+          });
+
+          // Process tool blocks
+          const toolPromises = toolBlocks.map(async block => {
+            const card = createMessageCard(block);
+            appendMessageCard(card);
+            
+            if (block.content.name && block.content.input) {
+              const instruction = {
+                action: block.content.name,
+                ...block.content.input
+              };
+              // Pass tool_use_id to executeInstruction
+              await executeInstruction(instruction, block.id);
+            }
+          });
+
+          // Wait for all operations to complete
+          await Promise.all([...audioPromises, ...toolPromises]);
+
+          // Break the loop if end_turn is true
+          if (response.end_turn) {
+            isProcessingTurn = false;
+            break;
           }
-          // Handle other block types if needed
+
+          // Make another API call with any pending tool results
+          response = await sendToAPI(prompt, true);
         }
 
         // Clear and re-enable inputs
@@ -407,6 +422,7 @@ function createFloatingButton() {
         textarea.value = 'Error occurred. Please try again.';
         textarea.disabled = false;
         submitButton.disabled = false;
+        isProcessingTurn = false;
         setTimeout(() => {
           textarea.value = prompt;
           textarea.focus();
@@ -513,7 +529,7 @@ function createMessageCard(block, isUser = false) {
       break;
       
     case 'tool_use':
-      content = block.content.name.replace(/_/g, ' '); // Just show the action name
+      content = block.content.input.action.replace(/_/g, ' '); // Just show the action name
       icon = '🔧';
       break;
       
