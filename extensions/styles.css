@@ -113,4 +113,20 @@
 
 .ai-messages-container::-webkit-scrollbar-thumb:hover {
   background: #ccc;
+}
+
+/* Add new tooltip styles */
+.ai-tooltip {
+  position: fixed;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  pointer-events: none;
+  z-index: 999999;
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+  max-width: 200px;
+  text-align: center;
 } 

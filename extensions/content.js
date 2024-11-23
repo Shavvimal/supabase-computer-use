@@ -29,18 +29,34 @@ let isPreloadingAngryAnt = false;
 // Add at the top level of the file
 let mouseIndicator = null;
 
+// Add at the top level with other variables
+let tooltipElement = null;
+
 // Function to simulate mouse movement
 function moveMouseTo(x, y) {
   return new Promise(resolve => {
     createOrUpdateMouseIndicator(x, y);
-    const event = new MouseEvent('mousemove', {
-      view: window,
-      bubbles: true,
-      cancelable: true,
-      clientX: x,
-      clientY: y
-    });
-    document.elementFromPoint(x, y)?.dispatchEvent(event);
+
+    // Create or update tooltip
+    if (!tooltipElement) {
+      tooltipElement = document.createElement('div');
+      tooltipElement.className = 'ai-tooltip';
+      document.body.appendChild(tooltipElement);
+    }
+
+    // Position tooltip above the cursor
+    tooltipElement.textContent = 'Click here';
+    tooltipElement.style.left = `${x - tooltipElement.offsetWidth / 2}px`;
+    tooltipElement.style.top = `${y - tooltipElement.offsetHeight - 25}px`;
+    tooltipElement.style.opacity = '1';
+
+    // Hide tooltip after 2 seconds
+    // setTimeout(() => {
+    //   if (tooltipElement) {
+    //     tooltipElement.style.opacity = '0';
+    //   }
+    // }, 2000);
+
     setTimeout(resolve, 50);
   });
 }
@@ -48,13 +64,17 @@ function moveMouseTo(x, y) {
 // Function to simulate mouse clicks
 function simulateClick(type) {
   return new Promise(resolve => {
+    // Hide tooltip immediately on click
+    if (tooltipElement) {
+      tooltipElement.style.opacity = '0';
+    }
+
     const element = document.elementFromPoint(
       window.mouseX || 0,
       window.mouseY || 0
     );
 
     if (element && mouseIndicator) {
-      // Animate the indicator to show click
       mouseIndicator.style.transform = 'scale(0.8)';
       setTimeout(() => {
         mouseIndicator.style.transform = 'scale(1)';
@@ -97,12 +117,37 @@ function simulateKeyboard(text, isRawKey = false) {
 // Constants and message handlers
 const MESSAGE_HANDLERS = {
   mouse_move: async (instruction) => {
+    // 1. Do mouse move
     await moveMouseTo(instruction.coordinate[0], instruction.coordinate[1]);
+
+    // 3. Resolve promise and continue
     return `Moved to (${instruction.coordinate[0]}, ${instruction.coordinate[1]})`;
   },
 
   left_click: async () => {
-    await simulateClick('click');
+    // 1. Do mouse click
+    // await simulateClick('click');
+
+    // 2. Add click event listener and wait for click
+    await new Promise((resolve) => {
+      const clickHandler = (event) => {
+        if (tooltipElement) {
+          tooltipElement.style.opacity = '0';
+        }
+
+        // Create and append message card showing what was clicked
+        const messageCard = document.createElement('div');
+        messageCard.className = 'ai-message-card';
+        messageCard.innerHTML = `Clicked`;
+        appendMessageCard(messageCard);
+
+        document.removeEventListener('click', clickHandler);
+        resolve();
+      };
+      document.addEventListener('click', clickHandler);
+    });
+
+    // 3. Return status
     return 'Performed left click';
   },
 
@@ -129,6 +174,14 @@ const MESSAGE_HANDLERS = {
   screenshot: async () => {
     console.log('Taking screenshot...');
     try {
+      // Store tooltip visibility state
+      const tooltipWasVisible = tooltipElement && tooltipElement.style.opacity !== '0';
+      
+      // Hide tooltip if visible
+      if (tooltipWasVisible) {
+        tooltipElement.style.opacity = '0';
+      }
+
       const response = await new Promise((resolve, reject) => {
         chrome.runtime.sendMessage({ action: 'screenshot' }, response => {
           if (chrome.runtime.lastError) {
@@ -151,16 +204,21 @@ const MESSAGE_HANDLERS = {
 
           const data = response.imgSrc.replace(/^data:image\/png;base64,/, '');
 
-          resolve({
+          resolve([{
             type: "image",
             source: {
-              type: "base64", 
+              type: "base64",
               media_type: "image/png",
               data: data
             }
-          });
+          }]);
         });
       });
+
+      // Restore tooltip if it was visible before
+      if (tooltipWasVisible) {
+        tooltipElement.style.opacity = '1';
+      }
 
       console.log('Screenshot captured successfully');
       return response;
@@ -198,61 +256,74 @@ async function sendToAPI(prompt, isFollowUp = false) {
       type: "text",
       content: { text: prompt }
     });
-
-   
-
+  }
   // Add any pending tool results
   if (pendingToolResults.length > 0) {
     contentBlocks.push(...pendingToolResults);
     // Clear pending results after adding them
     pendingToolResults = [];
   }
+  try {
+    // const blockId = 'screenshot-' + Date.now();
+    // // Add tool use block for screenshot
+    // contentBlocks.push({
+    //   type: "tool_use",
+    //   id: blockId,
+    //   name: "computer",
+    //   input: {
+    //     action: "screenshot"
+    //   }
+    // });
 
-   // Then capture and add screenshot
-   try {
-      // const blockId = 'screenshot-' + Date.now();
-      // // Add tool use block for screenshot
-      // contentBlocks.push({
-      //   type: "tool_use",
-      //   id: blockId,
-      //   name: "computer",
-      //   input: {
-      //     action: "screenshot"
-      //   }
-      // });
 
-      
 
-      // // Add tool result block for screenshot
-      // contentBlocks.push({
-      //   type: "tool_result",
-      //   tool_use_id: blockId,
-      //   content: [ {
-      //     "type": "image",
-      //     "source": {
-      //       "type": "base64",
-      //       "media_type": "image/png",
-      //       "data": screenshotData,
-      //     }
-      //   }],
-      //   is_error: false,
-      // });
+    // // Add tool result block for screenshot
+    // contentBlocks.push({
+    //   type: "tool_result",
+    //   tool_use_id: blockId,
+    //   content: [ {
+    //     "type": "image",
+    //     "source": {
+    //       "type": "base64",
+    //       "media_type": "image/png",
+    //       "data": screenshotData,
+    //     }
+    //   }],
+    //   is_error: false,
+    // });
 
-      const screenshotData = await MESSAGE_HANDLERS.screenshot();
+    const screenshotData = await MESSAGE_HANDLERS.screenshot();
 
-      contentBlocks.push({
-        type: "image",
-        content: {
-          source: {
-            type: "base64",
-            media_type: "image/png",
-            data: screenshotData.source.data
-          }
+    //  contentBlocks.push({
+    //    type: "image",
+    //    content: {
+    //      source: {
+    //        type: "base64",
+    //        media_type: "image/png",
+    //        data: screenshotData[0].source.data
+    //      }
+    //    }
+    //  });
+
+    const blockId = 'screenshot-' + Date.now();
+    contentBlocks.push({
+      type: "tool_use",
+      content: {
+        id: blockId,
+        name: "computer",
+        input: {
+          action: "screenshot"
         }
-      });
-    } catch (error) {
-      console.error('Failed to capture initial screenshot:', error);
-    }
+      }
+    }, {
+      type: "tool_result",
+      content: {
+        tool_use_id: blockId,
+        content: screenshotData
+      }
+    });
+  } catch (error) {
+    console.error('Failed to capture initial screenshot:', error);
   }
 
   const response = await fetch('http://localhost:8000/agent', {
@@ -577,7 +648,7 @@ async function handleSubmit() {
           const card = createMessageCard(block);
           appendMessageCard(card);
           //textToSpeech(block.content.text);
-          return 
+          return
         });
 
         // Process tool blocks
@@ -819,7 +890,7 @@ function createOrUpdateMouseIndicator(x, y) {
     `;
     document.body.appendChild(mouseIndicator);
   }
-  
+
   mouseIndicator.style.transform = 'scale(1)';
   mouseIndicator.style.left = `${x - 10}px`;
   mouseIndicator.style.top = `${y - 10}px`;

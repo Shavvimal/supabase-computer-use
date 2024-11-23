@@ -54,39 +54,83 @@ async def agent_endpoint(request: MessageRequest):
                 }
             })
         elif block.type == "tool_result":
-            user_content.append({
-                "type": "tool_result",
-                "tool_use_id": block.content.get("tool_use_id"),
-                "is_error": block.content.get("is_error", False),
-                "content": block.content.get("content", [])
-            })
+            # Check if there's already a tool_use with this ID
+            has_matching_tool_use = False
+            for existing_block in request.content_blocks:
+                if (existing_block.type == "tool_use" and 
+                    existing_block.content.get("id") == block.content.get("tool_use_id")):
+                    has_matching_tool_use = True
+                    continue
+            
+            if not has_matching_tool_use:
+                user_content.append({
+                    "type": "tool_result", 
+                    "tool_use_id": block.content.get("tool_use_id"),
+                    "is_error": block.content.get("is_error", False),
+                    "content": block.content.get("content", [])
+                })
         else:
             # Handle other types as needed
             user_content.append(block.dict())
 
-    # # If conversation_id is not provided, invoke the extraction agent
-    # if not request.conversation_id:
-    #     if initial_message_text:
-    #         # Invoke the agentic_rag
-    #         agentic_rag = SHARED["agentic_rag"]
-    #         try:
-    #             result = agentic_rag.invoke(initial_message_text)
-    #             # Replace the user_content with the result from extraction_agent
-    #             user_content = [{
-    #                 "type": "text",
-    #                 "text": result
-    #             }]
-    #         except Exception as e:
-    #             raise HTTPException(status_code=500, detail=f"Error invoking extraction_agent: {str(e)}")
-    #     else:
-    #         # No initial message text provided
-    #         raise HTTPException(status_code=400, detail="No initial message text provided for extraction.")
-
+    # If conversation_id is not provided, invoke the extraction agent
+    if not request.conversation_id:
+        if initial_message_text:
+            # Invoke the agentic_rag
+            agentic_rag = SHARED["agentic_rag"]
+            try:
+                result = agentic_rag.invoke(initial_message_text)
+                print(result)
+                # Replace just the first text content with the result
+                if len(user_content) > 0:
+                    user_content[0] = {
+                        "type": "text",
+                        "text": result
+                    }
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Error invoking extraction_agent: {str(e)}")
+        else:
+            # No initial message text provided
+            raise HTTPException(status_code=400, detail="No initial message text provided for extraction.")
     # Append the user's content to the conversation
     state["messages"].append({
         "role": Sender.USER,
         "content": user_content,
     })
+
+
+    for block in request.content_blocks:
+        if block.type == "tool_use":
+            # Find matching tool_result with same ID
+            matching_result = None
+            for result_block in request.content_blocks:
+                if (result_block.type == "tool_result" and 
+                    result_block.content.get("tool_use_id") == block.content.get("id")):
+                    matching_result = result_block
+                    break
+            
+            if matching_result:
+                # Append tool use as assistant message
+                state["messages"].append({
+                    "role": Sender.BOT,
+                    "content": [{
+                        "type": "tool_use",
+                        "id": block.content.get("id"),
+                        "name": block.content.get("name"), 
+                        "input": block.content.get("input", {})
+                    }],
+                })
+                
+                # Append tool result as user message
+                state["messages"].append({
+                    "role": Sender.USER,
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": matching_result.content.get("tool_use_id"),
+                        "is_error": matching_result.content.get("is_error", False),
+                        "content": matching_result.content.get("content", [])
+                    }],
+                })
 
     try:
         # Access the actor and pass metadata
