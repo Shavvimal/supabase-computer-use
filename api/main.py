@@ -9,6 +9,7 @@ from api.scu.router import router as scu_router
 from api.scu.agent_rag import AgenticRAG
 from supabase import create_client, Client
 from api.scu.computer_use import AnthropicActor
+from api.scu.speech_router import router as speech_router
 from logging import getLogger
 
 load_dotenv()
@@ -61,6 +62,7 @@ lifespan=lifespan,
 # Routers
 app.include_router(main_router)
 app.include_router(scu_router)
+app.include_router(speech_router)
 
 if __name__ == "__main__":
     import uvicorn
