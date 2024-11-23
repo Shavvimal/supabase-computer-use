@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize Supabase client: {e}")
 
     try:
-        SHARED["extraction_agent"] = AgenticRAG()
+        SHARED["agentic_rag"] = AgenticRAG()
     except Exception as e:
         logger.error(f"Failed to initialize extraction_agent: {e}")
 

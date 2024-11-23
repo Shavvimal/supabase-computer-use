@@ -33,13 +33,16 @@ async def agent_endpoint(request: MessageRequest):
     if not request.content_blocks:
         raise HTTPException(status_code=400, detail="No content_blocks provided.")
 
-    # Convert content_blocks to the format expected by the assistant
+    # Extract the initial message text and convert content_blocks
     user_content = []
+    initial_message_text = ""
     for block in request.content_blocks:
         if block.type == "text":
+            text = block.content.get("text", "")
+            initial_message_text += text
             user_content.append({
                 "type": "text",
-                "text": block.content.get("text", "")
+                "text": text
             })
         elif block.type == "image":
             user_content.append({
@@ -60,6 +63,24 @@ async def agent_endpoint(request: MessageRequest):
         else:
             # Handle other types as needed
             user_content.append(block.dict())
+
+    # If conversation_id is not provided, invoke the extraction agent
+    if not request.conversation_id:
+        if initial_message_text:
+            # Invoke the agentic_rag
+            agentic_rag = SHARED["agentic_rag"]
+            try:
+                result = agentic_rag.invoke(initial_message_text)
+                # Replace the user_content with the result from extraction_agent
+                user_content = [{
+                    "type": "text",
+                    "text": result
+                }]
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Error invoking extraction_agent: {str(e)}")
+        else:
+            # No initial message text provided
+            raise HTTPException(status_code=400, detail="No initial message text provided for extraction.")
 
     # Append the user's content to the conversation
     state["messages"].append({
@@ -120,7 +141,6 @@ async def agent_endpoint(request: MessageRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.get("/agent-rag")
 async def search_companies_endpoint(
         background_tasks: BackgroundTasks,
@@ -130,7 +150,7 @@ async def search_companies_endpoint(
         raise HTTPException(status_code=400, detail="Query parameter cannot be empty.")
 
     try:
-        agent = SHARED["extraction_agent"]
+        agent = SHARED["agentic_rag"]
         supabase = SHARED["supabase_client"]
         result = agent.invoke(query)
 
