@@ -1,4 +1,8 @@
-# Supabase Computer Use
+# Supabase Computer Use Agentic Customer Success
+
+Customer Success and FDE's are innundated with questions. Users dont read the docs. How can we automate these tutorials? Our agent hand holds you the entire way, using RAG to fetch the data from the docs, to instruct the user how ot do things. 
+
+## asdas
 
 1. User will ask a Question
 2. Agentic RAG for Expansion will:
