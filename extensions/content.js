@@ -170,12 +170,12 @@ function createFloatingButton() {
         textarea.value = 'Processing...';
 
         // Send query to your backend API
-        const response = await fetch('http://localhost:8000/computer', {
+        const response = await fetch('http://localhost:8001/agent', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ query: prompt })
+          body: JSON.stringify({ message: prompt })
         });
 
         const instruction = await response.json();

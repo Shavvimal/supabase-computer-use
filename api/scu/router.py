@@ -12,7 +12,7 @@ from api.scu.computer_use import (
     MessageRequest,
     MessageResponse,
 )
-router = APIRouter(dependencies=[Depends(verify_token)])
+router = APIRouter()
 
 
 @router.get("/agent-rag")
@@ -89,4 +89,5 @@ async def agent_endpoint(request: MessageRequest):
         return MessageResponse(conversation_id=conversation_id, content=content_blocks)
 
     except Exception as e:
+        print(e)
         raise HTTPException(status_code=500, detail=str(e))

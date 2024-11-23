@@ -133,6 +133,6 @@ class AnthropicActor:
             system=self.system,
             tools=self.tools,
             betas=["computer-use-2024-10-22"],
-        ).parse()
+        )
 
         return response

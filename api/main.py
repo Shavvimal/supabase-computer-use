@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from api.core.main_router import router as main_router
 from api.utils.logger import setup_logger
 from api.utils.constants import SHARED
@@ -39,7 +40,7 @@ async def lifespan(app: FastAPI):
     print("Shutdown completed. Resources cleaned up.")
 
 app = FastAPI(
-lifespan=lifespan,
+    lifespan=lifespan,
     description="API",
     title="API",
     version="0.1.0",
@@ -47,6 +48,18 @@ lifespan=lifespan,
         "name": "API",
         "url": "https://supabase.com",
     },
+)
+
+# Add CORS middleware configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://supabase.com",
+        "http://localhost:3000",
+        "http://localhost:8000",
+        # Add other origins as needed
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
