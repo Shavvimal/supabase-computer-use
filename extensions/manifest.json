@@ -1,33 +1,50 @@
 {
-  "manifest_version": 3,
-  "name": "Computer Control Extension",
-  "version": "1.0",
-  "description": "Execute computer control instructions from backend API",
-  "permissions": [
-    "activeTab",
-    "scripting",
-    "tabs",
-    "desktopCapture",
-    "tabCapture"
-  ],
-  "host_permissions": [
-    "<all_urls>"
-  ],
-  "background": {
-    "service_worker": "background.js"
-  },
-  "content_scripts": [
-    {
-      "matches": [
-        "https://*.supabase.co/*",
-        "https://supabase.com/*"
-      ],
-      "js": ["content.js"],
-      "css": ["styles.css"]
+    "manifest_version": 3,
+    "name": "Computer Control Extension",
+    "version": "1.0",
+    "description": "Execute computer control instructions from backend API",
+    "permissions": [
+        "activeTab",
+        "scripting",
+        "tabs",
+        "desktopCapture",
+        "tabCapture"
+    ],
+    "host_permissions": [
+        "<all_urls>"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://*.supabase.co/*",
+                "https://supabase.com/*"
+            ],
+            "js": [
+                "lib/three.min.js",
+                "lib/GLTFLoader.js",
+                "content.js"
+            ],
+            "css": [
+                "styles.css"
+            ]
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "styles.css",
+                "models/*",
+                "lib/*"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ],
+    "content_security_policy": {
+        "extension_pages": "script-src 'self' 'wasm-unsafe-eval' http://localhost:* http://127.0.0.1:*; object-src 'self'"
     }
-  ],
-  "web_accessible_resources": [{
-    "resources": ["styles.css"],
-    "matches": ["<all_urls>"]
-  }]
-} 
+}

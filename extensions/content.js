@@ -32,6 +32,22 @@ let mouseIndicator = null;
 // Add at the top level with other variables
 let tooltipElement = null;
 
+// Add these at the top level with other variables
+let threeContainer = null;
+let threeRenderer = null;
+let threeScene = null;
+let threeCamera = null;
+let threeModel = null;
+let threeAnimationId = null;
+let isNodding = false;
+let nodParams = {
+  isNodding: false,
+  startTime: 0,
+  duration: 1000,
+  amplitude: 0.3,
+  originalY: 0
+};
+
 // Function to simulate mouse movement
 function moveMouseTo(x, y) {
   return new Promise(resolve => {
@@ -135,9 +151,7 @@ const MESSAGE_HANDLERS = {
           tooltipElement.style.opacity = '0';
         }
 
-        // Create and append message card showing what was clicked
-        const messageCard = createMessageCard('Clicked', true);
-        appendMessageCard(messageCard);
+
 
         document.removeEventListener('click', clickHandler);
         resolve();
@@ -232,7 +246,7 @@ const MESSAGE_HANDLERS = {
 
   speak: async (instruction) => {
     if (instruction.text) {
-      // await textToSpeech(instruction.text);
+      await textToSpeech(instruction.text);
       return {
         message: `Spoke text: ${instruction.text}`
       };
@@ -665,7 +679,7 @@ async function handleSubmit() {
         const audioPromises = textBlocks.map(block => {
           const card = createMessageCard(block);
           appendMessageCard(card);
-          return;
+          return textToSpeech(block.content.text);
         });
 
         // Process tool blocks
@@ -735,68 +749,6 @@ async function handleSubmit() {
       }, 2000);
     }
   }
-}
-
-// Update the createFloatingButton function to handle audio initialization
-function createFloatingButton() {
-  console.log('Creating floating button...');
-
-  // Create main container
-  const container = document.createElement('div');
-  container.className = 'ai-floating-container';
-
-  // Create messages container
-  const messagesContainer = document.createElement('div');
-  messagesContainer.className = 'ai-messages-container';
-
-  // Create input container at the bottom
-  const inputContainer = document.createElement('div');
-  inputContainer.className = 'ai-input-container';
-
-  // Create textarea (now using global variable)
-  textarea = document.createElement('textarea');
-  textarea.className = 'ai-input-field';
-  textarea.placeholder = 'Enter your prompt here...';
-
-  // Create submit button (now using global variable)
-  submitButton = document.createElement('button');
-  submitButton.className = 'ai-submit-button';
-  submitButton.textContent = 'Submit';
-
-  inputContainer.appendChild(textarea);
-  inputContainer.appendChild(submitButton);
-
-  // Add components to main container
-  container.appendChild(messagesContainer);
-  container.appendChild(inputContainer);
-
-  // Initialize audio on first interaction with any element
-  const initAudioOnInteraction = async () => {
-    console.log('User interaction detected, initializing audio...');
-    const context = initAudioContext();
-    if (context) {
-      await context.resume();
-      // await preloadAngryAntAudio();
-      // Remove all the interaction listeners once initialized
-      container.removeEventListener('click', initAudioOnInteraction);
-    }
-  };
-
-  // Add multiple opportunities to initialize audio
-  container.addEventListener('click', initAudioOnInteraction);
-
-  // Handle submit button click
-  submitButton.addEventListener('click', handleSubmit);
-
-  // Handle textarea enter key
-  textarea.addEventListener('keydown', async function (e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
-    }
-  });
-
-  return container;
 }
 
 // Add this function after createFloatingButton but before init()
@@ -951,4 +903,192 @@ function createLoadingCard() {
   `;
   
   return card;
-} 
+}
+
+// Add the Three.js initialization function
+async function initThreeJS(container) {
+  try {
+
+    const THREE = window.THREE;
+    if (!THREE) {
+      console.error('THREE.js failed to load');
+      return;
+    }
+
+    // Create scene
+    threeScene = new THREE.Scene();
+    
+    // Get container dimensions
+    const width = 100;
+    const height = 100;
+
+    // Create camera
+    threeCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+    threeCamera.position.set(0, 1, 3);
+
+    // Create renderer
+    threeRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    threeRenderer.setSize(width, height);
+    threeRenderer.setPixelRatio(window.devicePixelRatio);
+    threeRenderer.setClearColor(0x000000, 0);
+
+    // Add lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1);
+    threeScene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    directionalLight.position.set(5, 5, 5);
+    threeScene.add(directionalLight);
+
+    // Load model
+    const loader = new THREE.GLTFLoader();
+    const modelUrl = chrome.runtime.getURL('models/Smiling_Portrait_1123072412.glb');
+
+    try {
+      const gltf = await new Promise((resolve, reject) => {
+        loader.load(
+          modelUrl,
+          resolve,
+          (xhr) => {
+            console.log(`Model loading: ${(xhr.loaded / xhr.total) * 100}% loaded`);
+          },
+          reject
+        );
+      });
+      
+      threeModel = gltf.scene;
+      threeScene.add(threeModel);
+      threeModel.position.set(0, 1, 0);
+      threeModel.scale.set(1, 1, 1);
+      nodParams.originalY = threeModel.position.y;
+      
+    } catch (modelError) {
+      console.error('Error loading 3D model:', modelError);
+    }
+
+
+    // Start animation loop
+    function animate() {
+      threeAnimationId = requestAnimationFrame(animate);
+
+      // Handle nodding
+      if (nodParams.isNodding && threeModel) {
+        const currentTime = performance.now();
+        const elapsed = currentTime - nodParams.startTime;
+        
+        if (elapsed < nodParams.duration) {
+          const progress = elapsed / nodParams.duration;
+          const angle = progress * Math.PI;
+          const yOffset = Math.sin(angle) * nodParams.amplitude;
+          threeModel.position.y = nodParams.originalY + yOffset;
+        } else {
+          threeModel.position.y = nodParams.originalY;
+          nodParams.isNodding = false;
+          isNodding = false;
+        }
+      }
+
+      threeRenderer.render(threeScene, threeCamera);
+    }
+
+    animate();
+    
+    // Append renderer to container
+    container.appendChild(threeRenderer.domElement);
+
+  } catch (error) {
+    console.error('Three.js initialization error:', error);
+  }
+}
+
+// Add nod function
+function triggerNod() {
+  if (nodParams.isNodding || !threeModel) return;
+  
+  nodParams.isNodding = true;
+  nodParams.startTime = performance.now();
+  isNodding = true;
+}
+
+// Update createFloatingButton to include Three.js container
+function createFloatingButton() {
+  // Create main container (existing code...)
+  const container = document.createElement('div');
+  container.className = 'ai-floating-container';
+
+  // Create Three.js container
+  threeContainer = document.createElement('div');
+  threeContainer.className = 'ai-three-container';
+  threeContainer.style.cssText = `
+    width: 100px;
+    height: 100px;
+    position: absolute;
+    bottom: 0;
+    right: 100%;
+    pointer-events: none;
+    border-radius: 8px;
+    overflow: hidden;
+  `;
+
+  // Initialize Three.js
+  initThreeJS(threeContainer);
+
+  // Add Three.js container and nod button
+  container.appendChild(threeContainer);
+
+// Update the createFloatingButton function to handle audio initialization
+  console.log('Creating floating button...');
+
+  // Create messages container
+  const messagesContainer = document.createElement('div');
+  messagesContainer.className = 'ai-messages-container';
+
+  // Create input container at the bottom
+  const inputContainer = document.createElement('div');
+  inputContainer.className = 'ai-input-container';
+
+  // Create textarea (now using global variable)
+  textarea = document.createElement('textarea');
+  textarea.className = 'ai-input-field';
+  textarea.placeholder = 'Enter your prompt here...';
+
+  // Create submit button (now using global variable)
+  submitButton = document.createElement('button');
+  submitButton.className = 'ai-submit-button';
+  submitButton.textContent = 'Submit';
+
+  inputContainer.appendChild(textarea);
+  inputContainer.appendChild(submitButton);
+
+  // Add components to main container
+  container.appendChild(messagesContainer);
+  container.appendChild(inputContainer);
+
+  // Initialize audio on first interaction with any element
+  const initAudioOnInteraction = async () => {
+    console.log('User interaction detected, initializing audio...');
+    const context = initAudioContext();
+    if (context) {
+      await context.resume();
+      await preloadAngryAntAudio();
+      // Remove all the interaction listeners once initialized
+      container.removeEventListener('click', initAudioOnInteraction);
+    }
+  };
+
+  // Add multiple opportunities to initialize audio
+  container.addEventListener('click', initAudioOnInteraction);
+
+  // Handle submit button click
+  submitButton.addEventListener('click', handleSubmit);
+
+  // Handle textarea enter key
+  textarea.addEventListener('keydown', async function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  });
+
+  return container;
+}
