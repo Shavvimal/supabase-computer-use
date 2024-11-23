@@ -43,7 +43,7 @@
 }
 
 .ai-popup-content.visible {
-  display: block;
+  display: flex;
   opacity: 1;
 }
 
@@ -58,6 +58,7 @@
   height: 80px;
   color: #333;
   background-color: #fff;
+  flex: 1;
 }
 
 .ai-button-icon {
