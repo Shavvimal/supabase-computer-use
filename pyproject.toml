@@ -1,0 +1,37 @@
+[tool.poetry]
+name = "scu"
+version = "0.1"
+description = "Supabase Computer Use"
+authors = ["shavvimal <shavhugan@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.13"
+pydantic = "^2.10.0"
+streamlit = ">=1.38.0"
+jsonschema = "^4.23.0"
+gradio = "^5.6.0"
+screeninfo = "^0.8.1"
+anthropic = "^0.39.0"
+pyautogui = "^0.9.54"
+python-dotenv = "^1.0.1"
+aiohttp = "^3.11.7"
+tiktoken = "^0.8.0"
+aiolimiter = "^1.1.0"
+supabase = "^2.10.0"
+langchain-community = "^0.3.7"
+langchain-openai = "^0.2.9"
+langgraph = "^0.2.53"
+langchain = "^0.3.7"
+
+[tool.poetry.group.dev.dependencies]
+jupyter = "^1.0.0"
+ruff = "0.6.7"
+pytest = "8.3.3"
+pytest-asyncio = "0.23.6"
+
+[build-system]
+# A list of dependencies required to build your package, making this key mandatory
+requires = ["poetry-core"]
+# The Python object used to perform the build process
+build-backend = "poetry.core.masonry.api"
