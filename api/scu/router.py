@@ -64,23 +64,23 @@ async def agent_endpoint(request: MessageRequest):
             # Handle other types as needed
             user_content.append(block.dict())
 
-    # If conversation_id is not provided, invoke the extraction agent
-    if not request.conversation_id:
-        if initial_message_text:
-            # Invoke the agentic_rag
-            agentic_rag = SHARED["agentic_rag"]
-            try:
-                result = agentic_rag.invoke(initial_message_text)
-                # Replace the user_content with the result from extraction_agent
-                user_content = [{
-                    "type": "text",
-                    "text": result
-                }]
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Error invoking extraction_agent: {str(e)}")
-        else:
-            # No initial message text provided
-            raise HTTPException(status_code=400, detail="No initial message text provided for extraction.")
+    # # If conversation_id is not provided, invoke the extraction agent
+    # if not request.conversation_id:
+    #     if initial_message_text:
+    #         # Invoke the agentic_rag
+    #         agentic_rag = SHARED["agentic_rag"]
+    #         try:
+    #             result = agentic_rag.invoke(initial_message_text)
+    #             # Replace the user_content with the result from extraction_agent
+    #             user_content = [{
+    #                 "type": "text",
+    #                 "text": result
+    #             }]
+    #         except Exception as e:
+    #             raise HTTPException(status_code=500, detail=f"Error invoking extraction_agent: {str(e)}")
+    #     else:
+    #         # No initial message text provided
+    #         raise HTTPException(status_code=400, detail="No initial message text provided for extraction.")
 
     # Append the user's content to the conversation
     state["messages"].append({

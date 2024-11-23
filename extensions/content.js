@@ -26,9 +26,13 @@ let isPlayingAngryAnt = false;
 // Add at the top level of the file
 let isPreloadingAngryAnt = false;
 
+// Add at the top level of the file
+let mouseIndicator = null;
+
 // Function to simulate mouse movement
 function moveMouseTo(x, y) {
   return new Promise(resolve => {
+    createOrUpdateMouseIndicator(x, y);
     const event = new MouseEvent('mousemove', {
       view: window,
       bubbles: true,
@@ -49,7 +53,13 @@ function simulateClick(type) {
       window.mouseY || 0
     );
 
-    if (element) {
+    if (element && mouseIndicator) {
+      // Animate the indicator to show click
+      mouseIndicator.style.transform = 'scale(0.8)';
+      setTimeout(() => {
+        mouseIndicator.style.transform = 'scale(1)';
+      }, 150);
+
       const event = new MouseEvent(type, {
         view: window,
         bubbles: true,
@@ -139,12 +149,14 @@ const MESSAGE_HANDLERS = {
             return;
           }
 
+          const data = response.imgSrc.replace(/^data:image\/png;base64,/, '');
+
           resolve({
             type: "image",
             source: {
               type: "base64", 
-              media_type: "image/jpeg",
-              data: response.imgSrc
+              media_type: "image/png",
+              data: data
             }
           });
         });
@@ -159,18 +171,19 @@ const MESSAGE_HANDLERS = {
   },
 
   cursor_position: (instruction) => {
-    return {
-      x: window.mouseX || 0,
-      y: window.mouseY || 0
-    };
+    return `Cursor position: x=${window.mouseX || 0}, y=${window.mouseY || 0}`;
   },
 
   speak: async (instruction) => {
     if (instruction.text) {
-      await textToSpeech(instruction.text);
-      return `Spoke text: ${instruction.text}`;
+      // await textToSpeech(instruction.text);
+      return {
+        message: `Spoke text: ${instruction.text}`
+      };
     }
-    return 'No text provided to speak';
+    return {
+      message: 'No text provided to speak'
+    };
   }
 };
 
@@ -186,8 +199,17 @@ async function sendToAPI(prompt, isFollowUp = false) {
       content: { text: prompt }
     });
 
-    // Then capture and add screenshot
-    try {
+   
+
+  // Add any pending tool results
+  if (pendingToolResults.length > 0) {
+    contentBlocks.push(...pendingToolResults);
+    // Clear pending results after adding them
+    pendingToolResults = [];
+  }
+
+   // Then capture and add screenshot
+   try {
       // const blockId = 'screenshot-' + Date.now();
       // // Add tool use block for screenshot
       // contentBlocks.push({
@@ -199,7 +221,7 @@ async function sendToAPI(prompt, isFollowUp = false) {
       //   }
       // });
 
-      const screenshotData = await MESSAGE_HANDLERS.screenshot();
+      
 
       // // Add tool result block for screenshot
       // contentBlocks.push({
@@ -216,30 +238,21 @@ async function sendToAPI(prompt, isFollowUp = false) {
       //   is_error: false,
       // });
 
+      const screenshotData = await MESSAGE_HANDLERS.screenshot();
+
       contentBlocks.push({
         type: "image",
         content: {
-          type: "base64",
-          media_type: "image/png",
-          data: screenshotData
+          source: {
+            type: "base64",
+            media_type: "image/png",
+            data: screenshotData.source.data
+          }
         }
-      })
+      });
     } catch (error) {
       console.error('Failed to capture initial screenshot:', error);
-      // Add error tool result
-      contentBlocks.push({
-        type: "tool_result",
-        tool_use_id: blockId,
-        is_error: true,
-      });
     }
-  }
-
-  // Add any pending tool results
-  if (pendingToolResults.length > 0) {
-    contentBlocks.push(...pendingToolResults);
-    // Clear pending results after adding them
-    pendingToolResults = [];
   }
 
   const response = await fetch('http://localhost:8000/agent', {
@@ -390,8 +403,10 @@ async function executeInstruction(instruction, toolUseId) {
       // Create tool result object
       const toolResult = {
         type: "tool_result",
-        tool_use_id: toolUseId,
-        content: result || "success" // Default to "success" if no result returned
+        content: {
+          tool_use_id: toolUseId,
+          content: result || "success" // Default to "success" if no result returned
+        }
       };
 
       pendingToolResults.push(toolResult);
@@ -400,9 +415,11 @@ async function executeInstruction(instruction, toolUseId) {
       // Create error result
       const errorResult = {
         type: "tool_result",
-        tool_use_id: toolUseId,
-        content: error.message,
-        is_error: true
+        content: {
+          tool_use_id: toolUseId,
+          content: error.message,
+          is_error: true
+        }
       };
 
       pendingToolResults.push(errorResult);
@@ -541,7 +558,7 @@ async function handleSubmit() {
       const angryAntPromise = playAngryAntStream();
 
       // Wait for API response
-      const response = await responsePromise;
+      let response = await responsePromise;
 
       // Set processing flag
       isProcessingTurn = true;
@@ -559,7 +576,8 @@ async function handleSubmit() {
         const audioPromises = textBlocks.map(block => {
           const card = createMessageCard(block);
           appendMessageCard(card);
-          return textToSpeech(block.content.text);
+          //textToSpeech(block.content.text);
+          return 
         });
 
         // Process tool blocks
@@ -573,7 +591,7 @@ async function handleSubmit() {
               ...block.content.input
             };
             // Pass tool_use_id to executeInstruction
-            await executeInstruction(instruction, block.id);
+            await executeInstruction(instruction, block.content.id);
           }
         });
 
@@ -649,7 +667,7 @@ function createFloatingButton() {
     const context = initAudioContext();
     if (context) {
       await context.resume();
-      await preloadAngryAntAudio();
+      // await preloadAngryAntAudio();
       // Remove all the interaction listeners once initialized
       container.removeEventListener('click', initAudioOnInteraction);
     }
@@ -782,4 +800,27 @@ function createMessageCard(block, isUser = false) {
   `;
 
   return card;
+}
+
+// Add this function after the moveMouseTo function
+function createOrUpdateMouseIndicator(x, y) {
+  if (!mouseIndicator) {
+    mouseIndicator = document.createElement('div');
+    mouseIndicator.style.cssText = `
+      position: fixed;
+      width: 20px;
+      height: 20px;
+      background: rgba(75, 161, 255, 0.4);
+      border: 2px solid rgba(75, 161, 255, 0.8);
+      border-radius: 50%;
+      pointer-events: none;
+      transition: all 0.3s ease-out;
+      z-index: 999999;
+    `;
+    document.body.appendChild(mouseIndicator);
+  }
+  
+  mouseIndicator.style.transform = 'scale(1)';
+  mouseIndicator.style.left = `${x - 10}px`;
+  mouseIndicator.style.top = `${y - 10}px`;
 } 

@@ -76,6 +76,8 @@ class ComputerTool(BaseAnthropicTool):
             "screenshot": None
         }
 
+        print(instruction)
+
         if action in ("mouse_move", "left_click_drag"):
             if coordinate is None:
                 raise ToolError(f"coordinate is required for {action}")
