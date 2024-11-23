@@ -1,26 +1,24 @@
 import os
 from datetime import datetime
 from uuid import uuid4
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException, Depends, APIRouter
 from pydantic import BaseModel
+from api.core.auth import verify_token
 from anthropic import Anthropic, APIResponse
-from anthropic.types import TextBlock
-from anthropic.types.beta import BetaMessage, BetaMessageParam, BetaTextBlock
+from anthropic.types.beta import (
+    BetaMessage,
+    BetaMessageParam,
+    BetaContentBlock,
+    BetaTextBlock,
+    BetaToolUseBlock,
+)
+
+router = APIRouter(dependencies=[Depends(verify_token)])
 
 
-# Pydantic models for request and response
-class MessageRequest(BaseModel):
-    conversation_id: str = None
-    message: str
 
-class MessageResponse(BaseModel):
-    conversation_id: str
-    response: str
-
-# In-memory store for conversation states
-conversation_states: Dict[str, Dict[str, Any]] = {}
 
 # Helper functions
 def setup_state(state):
@@ -31,82 +29,56 @@ def setup_state(state):
         if not state["api_key"]:
             raise ValueError("API key not found. Please set it in the environment.")
     if "model" not in state:
-        state["model"] = "claude-2"
+        state["model"] = "claude-3-5-sonnet-20241022"
     if "custom_system_prompt" not in state:
-        state["custom_system_prompt"] = (
-            f"\n\nNOTE: You are a helpful assistant. The current date is "
-            f"{datetime.today().strftime('%A, %B %d, %Y')}."
+        device_os_name = (
+            "Windows"
+            if os.name == "nt"
+            else "Mac"
+            if os.uname().sysname == "Darwin"
+            else "Linux"
         )
+        state["custom_system_prompt"] = f"\n\nNOTE: you are operating a {device_os_name} machine. The current date is {datetime.today().strftime('%A, %B %d, %Y')}."
+    if "responses" not in state:
+        state["responses"] = {}
+    if "tools" not in state:
+        state["tools"] = {}
+    if "only_n_most_recent_images" not in state:
+        state["only_n_most_recent_images"] = 2  # 10
 
-def _api_response_callback(response: APIResponse[BetaMessage], response_state: dict):
-    response_id = datetime.now().isoformat()
-    response_state[response_id] = response
+# Pydantic models for request and response
+class MessageRequest(BaseModel):
+    conversation_id: Optional[str] = None
+    message: str
 
-def _render_message(message, state):
-    if isinstance(message, BetaTextBlock):
-        return message.text
-    elif isinstance(message, TextBlock):
-        return message.text
+class ContentBlock(BaseModel):
+    type: str
+    text: Optional[str] = None
+    name: Optional[str] = None
+    input: Optional[dict] = None
+    id: Optional[str] = None
+
+class MessageResponse(BaseModel):
+    conversation_id: str
+    content: List[ContentBlock]
+
+
+def process_content_block(content_block: BetaContentBlock) -> Optional[ContentBlock]:
+    if isinstance(content_block, BetaTextBlock):
+        return ContentBlock(
+            type='text',
+            text=content_block.text
+        )
+    elif isinstance(content_block, BetaToolUseBlock):
+        return ContentBlock(
+            type='tool_use',
+            name=content_block.name,
+            input=content_block.input,
+            id=content_block.id
+        )
     else:
-        return str(message)
-
-# Endpoint definition
-@app.post("/agent")
-async def agent_endpoint(request: MessageRequest):
-    conversation_id = request.conversation_id or str(uuid4())
-
-    # Retrieve or create the conversation state
-    if conversation_id in conversation_states:
-        state = conversation_states[conversation_id]
-    else:
-        state = {}
-        setup_state(state)
-        conversation_states[conversation_id] = state
-
-    # Add user message to messages
-    state["messages"].append(
-        {
-            "role": "user",
-            "content": [{"type": "text", "text": request.message}],
-        }
-    )
-
-    try:
-        response_state = {}
-
-        # Create the actor
-        actor = AnthropicActor(
-            model=state["model"],
-            system_prompt_suffix=state["custom_system_prompt"],
-            api_key=state["api_key"],
-            api_response_callback=lambda response: _api_response_callback(response, response_state),
-            max_tokens=4096,
-        )
-
-        response = actor(messages=state["messages"])
-
-        # Add assistant's message to messages
-        state["messages"].append(
-            {
-                "role": "assistant",
-                "content": response.content,
-            }
-        )
-
-        # Process the assistant's response
-        response_messages = []
-        for content_block in response.content:
-            rendered_message = _render_message(content_block, state)
-            if rendered_message:
-                response_messages.append(rendered_message)
-
-        # The assistant's response is the concatenation of rendered messages
-        assistant_response = "\n".join(response_messages)
-
-        return MessageResponse(conversation_id=conversation_id, response=assistant_response)
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Handle other types if necessary
+        return None
 
 # AnthropicActor class
 class AnthropicActor:
@@ -115,36 +87,52 @@ class AnthropicActor:
         model: str,
         system_prompt_suffix: str,
         api_key: str,
-        api_response_callback,
         max_tokens: int = 4096,
     ):
         self.model = model
         self.system_prompt_suffix = system_prompt_suffix
         self.api_key = api_key
-        self.api_response_callback = api_response_callback
         self.max_tokens = max_tokens
 
-        # System prompt without local system capabilities
-        self.system = f"NOTE: You are a helpful assistant.{system_prompt_suffix}"
+        # System prompt with system capabilities
+        self.system = f"<SYSTEM_CAPABILITY>\n* You are utilizing a machine with internet access.\n* The current date is {datetime.today().strftime('%A, %B %d, %Y')}.\n</SYSTEM_CAPABILITY>{' ' + system_prompt_suffix if system_prompt_suffix else ''}"
 
         # Instantiate the Anthropic API client
         self.client = Anthropic(api_key=api_key)
 
+        # Define the tools (only include names and types; execution will be on the client)
+        self.tools = [
+            {
+                "name": "computer",
+                "type": "computer_20241022",
+                "display_width_px": 1024,
+                "display_height_px": 768,
+                "display_number": None,
+            },
+            {
+                "name": "bash",
+                "type": "bash_20241022",
+            },
+            {
+                "name": "str_replace_editor",
+                "type": "text_editor_20241022",
+            },
+            # Add other tools if necessary
+        ]
+
     def __call__(
         self,
         *,
-        messages: list[BetaMessageParam]
-    ):
+        messages: List[BetaMessageParam]
+    ) -> BetaMessage:
         # Call the API synchronously
-        raw_response = self.client.beta.messages.with_raw_response.create(
+        response = self.client.beta.messages.create(
             max_tokens=self.max_tokens,
             messages=messages,
             model=self.model,
             system=self.system,
-        )
-
-        self.api_response_callback(raw_response)
-
-        response = raw_response.parse()
+            tools=self.tools,
+            betas=["computer-use-2024-10-22"],
+        ).parse()
 
         return response
