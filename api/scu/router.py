@@ -3,20 +3,16 @@ from fastapi.responses import JSONResponse
 from api.utils.constants import SHARED
 from fastapi import APIRouter, HTTPException
 from uuid import uuid4
-from typing import Dict, Any, List, Optional
-from anthropic.types import TextBlock
-from typing import Any, cast
+from typing import Dict
+from typing import Any
 from .computer_use import (
     setup_state,
-    AnthropicActor,
     MessageRequest,
     MessageResponse,
     ContentBlock,
     Sender
 )
-from anthropic.types.beta import (
-    BetaContentBlockParam,
-)
+
 router = APIRouter()
 
 # In-memory store for conversation states
@@ -54,6 +50,13 @@ async def agent_endpoint(request: MessageRequest):
                     "data": block.content.get("data", "")
                 }
             })
+        elif block.type == "tool_result":
+            user_content.append({
+                "type": "tool_result",
+                "tool_use_id": block.content.get("tool_use_id"),
+                "is_error": block.content.get("is_error", False),
+                "content": block.content.get("content", [])
+            })
         else:
             # Handle other types as needed
             user_content.append(block.dict())
@@ -75,28 +78,44 @@ async def agent_endpoint(request: MessageRequest):
             "content": assistant_response.content,
         })
 
+        # Process assistant's response content
         content_blocks = []
 
-        # Process assistant's response content
-        for content_block in assistant_response.content:
-            content_type = content_block.type
-            if content_type == "text":
-                content_blocks.append(ContentBlock(type="text", content={"text": content_block.text}))
-            elif content_type == "tool_use":
-                content_blocks.append(ContentBlock(type="tool_use", content={
-                    "id": content_block.id,
-                    "name": content_block.name,
-                    "input": content_block.input
-                }))
-            elif content_type == "image":
-                content_blocks.append(ContentBlock(type="image", content={
-                    "source": content_block.source.dict()
-                }))
-            else:
-                # Handle other types if necessary
-                content_blocks.append(ContentBlock(type=content_type, content=content_block.dict()))
+        # Check the assistant's stop_reason
+        if assistant_response.stop_reason == 'tool_use':
+            # Assistant is requesting tool usage
+            # Return the assistant's response to the client
+            for content_block in assistant_response.content:
+                content_type = content_block.type
+                if content_type == "text":
+                    content_blocks.append(ContentBlock(type="text", content={"text": content_block.text}))
+                elif content_type == "tool_use":
+                    content_blocks.append(ContentBlock(type="tool_use", content={
+                        "id": content_block.id,
+                        "name": content_block.name,
+                        "input": content_block.input
+                    }))
+                else:
+                    # Handle other types if necessary
+                    content_blocks.append(ContentBlock(type=content_type, content=content_block.dict()))
 
-        return MessageResponse(conversation_id=conversation_id, content=content_blocks)
+            return MessageResponse(conversation_id=conversation_id, content=content_blocks)
+        else:
+            # Assistant has provided a final answer or other response
+            # Return the assistant's response to the client
+            for content_block in assistant_response.content:
+                content_type = content_block.type
+                if content_type == "text":
+                    content_blocks.append(ContentBlock(type="text", content={"text": content_block.text}))
+                elif content_type == "image":
+                    content_blocks.append(ContentBlock(type="image", content={
+                        "source": content_block.source.dict()
+                    }))
+                else:
+                    # Handle other types if necessary
+                    content_blocks.append(ContentBlock(type=content_type, content=content_block.dict()))
+
+            return MessageResponse(conversation_id=conversation_id, content=content_blocks)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

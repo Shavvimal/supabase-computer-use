@@ -5,7 +5,6 @@ from pydantic import BaseModel
 from anthropic import Anthropic
 from anthropic.types.beta import (
     BetaMessageParam,
-    BetaContentBlockParam,
 )
 from enum import StrEnum
 from api.scu.tools import ToolCollection, ComputerTool
@@ -27,7 +26,7 @@ def setup_state(state):
         state["responses"] = {}
 
 class ContentBlock(BaseModel):
-    type: str  # e.g., "text", "image", "tool_result"
+    type: str  # e.g., "text", "image", "tool_result", "tool_use"
     content: Dict[str, Any]
 
 class MessageRequest(BaseModel):
