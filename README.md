@@ -1,8 +1,10 @@
 # Supabase Agentic Customer Success (Computer Use)
 
-Customer Success and FDE's are innundated with questions. Users dont read the docs. How can we automate these tutorials? Our agent A.N.T hand holds you the entire way, using RAG to fetch the data from the docs, to instruct the user how ot do things. 
+Customer Success, Solution Engineers and FDE's are innundated with questions. Users dont read the docs. How can we automate these tutorials? Our agent A.N.T hand holds you the entire way, using RAG to fetch the data from the docs, to instruct the user how ot do things. 
 
-## asdas
+![img.png](assets/img.png)
+
+## Flow 
 
 1. User will ask a Question
 2. Agentic RAG for Expansion will:
@@ -13,7 +15,7 @@ Customer Success and FDE's are innundated with questions. Users dont read the do
    - If not relevant, rewrite the query and retry
    - Generate as detailed instructions for Computer Use to use the GUI
 
-![img.png](assets/img.png)
+
 
 
 ![img.png](api/img.png)
