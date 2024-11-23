@@ -50,16 +50,21 @@ async def angry_ant():
     """
     curl -X POST "http://localhost:8000/angry-ant" -H "Content-Type: application/json" --output output_audio.mp3
     """
-    phrases = ["Alright, here we go again... for the third time today, let me explain this. Slowly.",
-    "I swear I’ve answered this before, but sure, let’s walk through it. Again.",
-    "Have you checked the documentation? It’s almost like I wrote it for this exact question.",
-    "Oh, another ticket about this? Shocker.",
-    "I’m starting to think I need to tattoo this solution on my forehead.",
-    "Not to sound repetitive, but… this is literally the same thing I said earlier.",
-    "Did you even read the email I sent, or was it just for decoration?",
-    "Let me just paste my response from 20 minutes ago… and 20 minutes before that.",
-    "Sure, I’ll fix your problem. Again. Because apparently, I’m a wizard.",
-    "Alright, let’s break it down. Step one: Listen. Step two: Remember.",]
+    phrases = ["Hmmmm... Alright, here we go again... for the third time today, let me explain this. Slowly. Ughhhh.",
+    "Ahem... I swear I've answered this before, but sure, let's walk through it. Again. Mmmhmm.",
+    "Have you checked the documentation? Pfft... It's almost like I wrote it for this exact question. Sighhhh.",
+    "Ughhhh... Oh, another ticket about this? Shocker. Hmmmmmm.",
+    "Mmmph... I'm starting to think I need to tattoo this solution on my forehead. Ughhh.",
+    "Hnnnngh... Not to sound repetitive, but this is literally the same thing I said earlier. Hmmmm.",
+    "Ughhhh... Did you even read the email I sent, or was it just for decoration? Hmmmph.",
+    "Haaaaaah... Let me just paste my response from 20 minutes ago and 20 minutes before that. Mmmhmm.",
+    "Hmmmm... Sure, I'll fix your problem. Again. Because apparently, I'm a wizard. Ughhhhh.",
+    "Hnnnngh... Alright, let's break it down. Step one: Listen. Step two: Remember. Hmmmph.",
+    "Ughhhhh... Let me explain this one more time, and I'll try to use smaller words. Hmmmm.",
+    "Haaaaah... You know what? Let's pretend this is the first time I'm seeing this issue. Mmmhmm.",
+    "Hmmmph... I'm having the strangest feeling of deja vu right now. How peculiar.",
+    "Ughhhhh... Fascinating. This looks exactly like the problem we solved yesterday. And the day before.",
+    "Hnnnngh... Well, well, well. If it isn't my favorite recurring question. Again."]
     # choose a random phrase from the list
     text = random.choice(phrases)
 
