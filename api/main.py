@@ -61,12 +61,7 @@ app = FastAPI(
 # Add CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://supabase.com",
-        "http://localhost:3000",
-        "http://localhost:8000",
-        # Add other origins as needed
-    ],
+    allow_origins=["*"],  # Temporarily allow all origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
