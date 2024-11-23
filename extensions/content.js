@@ -1,6 +1,12 @@
 // Add counter at the top level of the file
 let mockResponseCounter = 0;
 
+// Add this at the top level
+let messageHistory = [];
+
+// Add this at the top level of the file
+let audioContext = null;
+
 // Function to simulate mouse movement
 function moveMouseTo(x, y) {
   return new Promise(resolve => {
@@ -102,166 +108,226 @@ const MESSAGE_HANDLERS = {
       x: window.mouseX || 0,
       y: window.mouseY || 0
     });
+  },
+  
+  speak: async (instruction) => {
+    if (instruction.text) {
+      await textToSpeech(instruction.text);
+    }
   }
 };
 
-const MOCK_RESPONSES = [
-  {
-    "conversation_id": "123e4567-e89b-12d3-a456-426614174000",
-    "content": [
-      {
-        "action": "mouse_move",
-        "text": null,
-        "coordinate": [500, 300],
-        "wait_ms": 50,
-        "screenshot": null
+// Add this function to handle API calls
+async function sendToAPI(prompt) {
+  // Create user message block
+  const userBlock = {
+    type: "text",
+    content: {
+      text: prompt
+    }
+  };
+  
+  // Add user message to history with single block array
+  messageHistory.push({ 
+    role: 'user', 
+    content: [userBlock]
+  });
+
+  const response = await fetch('http://localhost:8000/agent', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      conversation_id: window.currentConversationId,
+      content_blocks: [userBlock],
+      metadata: {
+        screen: {
+          width: window.screen.width,
+          height: window.screen.height,
+          availWidth: window.screen.availWidth,
+          availHeight: window.screen.availHeight,
+          colorDepth: window.screen.colorDepth,
+          pixelDepth: window.screen.pixelDepth,
+          orientation: window.screen.orientation?.type
+        },
+        window: {
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          outerWidth: window.outerWidth, 
+          outerHeight: window.outerHeight,
+          devicePixelRatio: window.devicePixelRatio
+        },
+        browser: {
+          userAgent: navigator.userAgent,
+          platform: navigator.platform,
+          language: navigator.language,
+          languages: navigator.languages,
+          cookieEnabled: navigator.cookieEnabled,
+          doNotTrack: navigator.doNotTrack,
+          vendor: navigator.vendor,
+          maxTouchPoints: navigator.maxTouchPoints
+        },
+        connection: {
+          type: navigator.connection?.type,
+          effectiveType: navigator.connection?.effectiveType,
+          downlink: navigator.connection?.downlink,
+          rtt: navigator.connection?.rtt
+        }
       }
-    ]
-  },
-  {
-    "conversation_id": "123e4567-e89b-12d3-a456-426614174001", 
-    "content": [
-      {
-        "action": "left_click",
-        "text": null,
-        "coordinate": null,
-        "wait_ms": 50,
-        "screenshot": null
-      }
-    ]
-  },
-  {
-    "conversation_id": "123e4567-e89b-12d3-a456-426614174002",
-    "content": [
-      {
-        "action": "type",
-        "text": "Hello, I'm typing some text",
-        "coordinate": null,
-        "wait_ms": 276,
-        "screenshot": null
-      }
-    ]
-  },
-  {
-    "conversation_id": "123e4567-e89b-12d3-a456-426614174003",
-    "content": [
-      {
-        "action": "key",
-        "text": "Enter",
-        "coordinate": null,
-        "wait_ms": 60,
-        "screenshot": null
-      }
-    ]
-  },
-  {
-    "conversation_id": "123e4567-e89b-12d3-a456-426614174004",
-    "content": [
-      {
-        "action": "mouse_move",
-        "text": null,
-        "coordinate": [800, 600],
-        "wait_ms": 50,
-        "screenshot": null
-      }
-    ]
-  },
-  {
-    "conversation_id": "123e4567-e89b-12d3-a456-426614174005",
-    "content": [
-      {
-        "action": "right_click",
-        "text": null,
-        "coordinate": null,
-        "wait_ms": 50,
-        "screenshot": null
-      }
-    ]
-  }
-] = {
-    "conversation_id": "123e4567-e89b-12d3-a456-426614174000",
-    "content": [
-      // Sequential instructions that would be executed one after another
-      {
-        "action": "mouse_move",
-        "text": null,
-        "coordinate": [500, 300],
-        "wait_ms": 50,
-        "screenshot": null
-      },
-      {
-        "action": "left_click",
-        "text": null,
-        "coordinate": null,
-        "wait_ms": 50,
-        "screenshot": null
-      },
-      {
-        "action": "type",
-        "text": "Hello, I'm typing some text",
-        "coordinate": null,
-        "wait_ms": 276,
-        "screenshot": null
-      },
-      {
-        "action": "key",
-        "text": "Enter",
-        "coordinate": null,
-        "wait_ms": 60,
-        "screenshot": null
-      },
-      {
-        "action": "mouse_move",
-        "text": null,
-        "coordinate": [800, 600],
-        "wait_ms": 50,
-        "screenshot": null
-      },
-      {
-        "action": "right_click",
-        "text": null,
-        "coordinate": null,
-        "wait_ms": 50,
-        "screenshot": null
-      }
-    ]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error('API request failed');
   }
 
-// Handle floating button instruction execution
+  const data = await response.json();
+  window.currentConversationId = data.conversation_id;
+  
+  // Add entire assistant response to history
+  messageHistory.push({
+    role: 'assistant',
+    content: data.content
+  });
+  
+  // Separate text blocks and tool_use blocks
+  const textBlocks = data.content.filter(block => block.type === 'text');
+  const toolBlocks = data.content.filter(block => block.type === 'tool_use');
+  
+  // Process text blocks
+  const audioPromises = textBlocks.map(block => {
+    const card = createMessageCard(block);
+    appendMessageCard(card);
+    return textToSpeech(block.content.text);
+  });
+
+  // Process tool blocks
+  const toolPromises = toolBlocks.map(async block => {
+    const card = createMessageCard(block);
+    appendMessageCard(card);
+    
+    if (block.content.name && block.content.input) {
+      const instruction = {
+        action: block.content.name,
+        ...block.content.input
+      };
+      await executeInstruction(instruction);
+    }
+  });
+
+  // Wait for all operations to complete
+  await Promise.all([...audioPromises, ...toolPromises]);
+
+  return data;
+}
+
+// Add function to append message cards
+function appendMessageCard(card) {
+  const container = document.querySelector('.ai-messages-container');
+  
+  // Add card to container with animation
+  card.style.opacity = '0';
+  card.style.transform = 'translateY(20px)';
+  
+  // Insert at the bottom of the messages container
+  container.appendChild(card);
+  
+  // Trigger animation
+  requestAnimationFrame(() => {
+    card.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
+    card.style.transform = 'translateY(0)';
+    card.style.opacity = '1';
+  });
+  
+  // Scroll to bottom
+  container.scrollTop = container.scrollHeight;
+}
+
+// Add this function to initialize audio context on user interaction
+function initAudioContext() {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return audioContext;
+}
+
+// Update the textToSpeech function
+async function textToSpeech(text) {
+  try {
+    // Initialize audio context if needed
+    const context = initAudioContext();
+    if (context.state === 'suspended') {
+      await context.resume();
+    }
+
+    const response = await fetch('http://localhost:8000/text-to-ant', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text })
+    });
+
+    if (!response.ok) {
+      throw new Error('Text-to-speech request failed');
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = await context.decodeAudioData(arrayBuffer);
+    
+    const source = context.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(context.destination);
+    source.start(0);
+
+    return new Promise((resolve, reject) => {
+      source.onended = resolve;
+      source.onerror = reject;
+    });
+
+  } catch (error) {
+    console.error('Text-to-speech error:', error);
+    throw error;
+  }
+}
+
+// Update the executeInstruction function
 async function executeInstruction(instruction) {
   const handler = MESSAGE_HANDLERS[instruction.action];
   if (handler) {
     // Create and add action card
-    const card = createActionCard(instruction);
-    const container = document.querySelector('.ai-floating-button');
-    document.body.appendChild(card);
+    // const card = createActionCard(instruction);
+    // const container = document.querySelector('.ai-floating-button');
+    // document.body.appendChild(card);
     
-    // Set initial position using CSS custom property
-    const containerRect = container.getBoundingClientRect();
-    card.style.setProperty('--card-bottom', `${containerRect.height + 20}px`);
+    // // Set initial position using CSS custom property
+    // const containerRect = container.getBoundingClientRect();
+    // card.style.setProperty('--card-bottom', `${containerRect.height + 20}px`);
     
-    // Adjust positions of existing cards
-    const existingCards = document.querySelectorAll('.ai-action-card');
-    existingCards.forEach((existingCard, index) => {
-      if (existingCard !== card) {
-        const newBottom = containerRect.height + 20 + ((index + 1) * 60);
-        existingCard.style.setProperty('--card-bottom', `${newBottom}px`);
-        existingCard.classList.add('stacked');
-        existingCard.style.setProperty('--stack-opacity', Math.max(0, 1 - (index * 0.2)));
-      }
-    });
+    // // Adjust positions of existing cards
+    // const existingCards = document.querySelectorAll('.ai-action-card');
+    // existingCards.forEach((existingCard, index) => {
+    //   if (existingCard !== card) {
+    //     const newBottom = containerRect.height + 20 + ((index + 1) * 60);
+    //     existingCard.style.setProperty('--card-bottom', `${newBottom}px`);
+    //     existingCard.classList.add('stacked');
+    //     existingCard.style.setProperty('--stack-opacity', Math.max(0, 1 - (index * 0.2)));
+    //   }
+    // });
     
-    // Execute the action
+    // Execute the instruction
     await handler(instruction);
+    
     if (instruction.wait_ms) {
       await new Promise(resolve => setTimeout(resolve, instruction.wait_ms));
     }
     
     // Animate out and remove card after delay
-    setTimeout(() => {
-      card.classList.add('removing');
-      setTimeout(() => card.remove(), 300);
-    }, 2000);
+    // setTimeout(() => {
+    //   card.classList.add('removing');
+    //   setTimeout(() => card.remove(), 300);
+    // }, 2000);
   }
 }
 
@@ -271,20 +337,19 @@ document.addEventListener('mousemove', (e) => {
   window.mouseY = e.clientY;
 });
 
+// Update the createFloatingButton function to initialize audio context on click
 function createFloatingButton() {
-  // Create main button
+  // Create main container
   const container = document.createElement('div');
-  container.className = 'ai-floating-button';
+  container.className = 'ai-floating-container';
   
-  // Create icon
-  const icon = document.createElement('span');
-  icon.className = 'ai-button-icon';
-  icon.innerHTML = '📽️';
-  container.appendChild(icon);
-
-  // Create popup content
-  const popupContent = document.createElement('div');
-  popupContent.className = 'ai-popup-content';
+  // Create messages container
+  const messagesContainer = document.createElement('div');
+  messagesContainer.className = 'ai-messages-container';
+  
+  // Create input container at the bottom
+  const inputContainer = document.createElement('div');
+  inputContainer.className = 'ai-input-container';
   
   // Create textarea
   const textarea = document.createElement('textarea');
@@ -296,19 +361,16 @@ function createFloatingButton() {
   submitButton.className = 'ai-submit-button';
   submitButton.textContent = 'Submit';
   
-  popupContent.appendChild(textarea);
-  popupContent.appendChild(submitButton);
-  container.appendChild(popupContent);
+  inputContainer.appendChild(textarea);
+  inputContainer.appendChild(submitButton);
+  
+  // Add components to main container
+  container.appendChild(messagesContainer);
+  container.appendChild(inputContainer);
 
-  // Add click handler for the container
+  // Update click handler to just initialize audio
   container.addEventListener('click', function(e) {
-    if (!container.classList.contains('expanded')) {
-      container.classList.add('expanded');
-      setTimeout(() => {
-        popupContent.classList.add('visible');
-        textarea.focus();
-      }, 300);
-    }
+    initAudioContext();
   });
 
   // Handle submit button click
@@ -321,16 +383,17 @@ function createFloatingButton() {
         submitButton.disabled = true;
         textarea.value = 'Processing...';
 
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Send to API instead of using mock data
+        const response = await sendToAPI(prompt);
 
-        // Get next mock response and increment counter
-        const mockResponse = MOCK_RESPONSES[mockResponseCounter];
-        mockResponseCounter = (mockResponseCounter + 1) % MOCK_RESPONSES.length;
-
-        // Execute instructions from mock response
-        for (const instruction of mockResponse.content) {
-          await executeInstruction(instruction);
+        // Process each content block from the response
+        for (const block of response.content) {
+          if (block.type === 'tool_use') {
+            // Convert tool_use block to instruction format
+            const instruction = convertToolUseToInstruction(block.content);
+            await executeInstruction(instruction);
+          }
+          // Handle other block types if needed
         }
 
         // Clear and re-enable inputs
@@ -392,13 +455,16 @@ function createActionCard(instruction) {
     right_click: '👆',
     double_click: '👆👆',
     type: '⌨️',
-    key: '🔤'
+    key: '🔤',
+    screenshot: '📸'
   };
   
   const icon = iconMap[instruction.action] || '❓';
+
+  console.log(instruction);
   
   // Create card content
-  let text = instruction.action.replace('_', ' ');
+  let text = instruction.action;
   if (instruction.text) {
     text += `: "${instruction.text}"`;
   } else if (instruction.coordinate) {
@@ -427,6 +493,58 @@ function init() {
   injectStyles();
   const button = createFloatingButton();
   document.body.appendChild(button);
+}
+
+// Add function to create message card
+function createMessageCard(block, isUser = false) {
+  const card = document.createElement('div');
+  card.className = 'ai-message-card';
+  if (isUser) card.classList.add('user');
+  
+  // Add animation class
+  card.classList.add('ai-message-card-animated');
+  
+  let icon = isUser ? '👤' : '🤖';
+  let content = '';
+  
+  switch (block.type) {
+    case 'text':
+      content = block.content.text;
+      break;
+      
+    case 'tool_use':
+      content = block.content.name.replace(/_/g, ' '); // Just show the action name
+      icon = '🔧';
+      break;
+      
+    case 'tool_result':
+      content = block.content.is_error ? 
+        `Error: ${block.content.content}` :
+        block.content.content;
+      icon = block.content.is_error ? '❌' : '✅';
+      break;
+      
+    case 'image':
+      const img = document.createElement('img');
+      img.src = block.content.source.data;
+      img.className = 'ai-message-image';
+      card.appendChild(img);
+      icon = '🖼️';
+      break;
+      
+    default:
+      content = JSON.stringify(block.content, null, 2);
+      icon = '❓';
+  }
+  
+  card.innerHTML = `
+    <span class="ai-card-icon">${icon}</span>
+    <div class="ai-card-content">
+      <span class="ai-card-text">${content}</span>
+    </div>
+  `;
+  
+  return card;
 }
 
 init(); 
