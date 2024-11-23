@@ -3,7 +3,7 @@ import base64
 import json
 
 # Endpoint URL
-url = "http://localhost:8000/agent"
+url = "http://localhost:8001/agent"
 
 # Read an image file and encode it in base64
 with open("./img.png", "rb") as image_file:
@@ -15,7 +15,7 @@ payload = {
         {
             "type": "text",
             "content": {
-                "text": "Create a new table called emails."
+                "text": "How do I enable the pgvector extension?"
             }
         },
         {
