@@ -159,5 +159,6 @@ async def search_companies_endpoint(
 
         return JSONResponse(content=result)
     except Exception as e:
+        print(e)
         raise HTTPException(status_code=500, detail=str(e))
 

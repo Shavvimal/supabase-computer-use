@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Computer Control Extension",
+  "version": "1.0",
+  "description": "Execute computer control instructions from backend API",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs",
+    "desktopCapture"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.supabase.co/*",
+        "https://supabase.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["styles.css"]
+    }
+  ],
+  "web_accessible_resources": [{
+    "resources": ["styles.css"],
+    "matches": ["<all_urls>"]
+  }]
+} 
