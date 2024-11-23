@@ -11,6 +11,9 @@
 
 ![img.png](assets/img.png)
 
+
+![img.png](api/img.png)
+
 1. Add Anthropic-defined computer use tools to your API request, as well as the user prompt
 2. Claude loads the stored computer use tool definitions and assesses if any tools can help with the user’s query.
    - If yes, Claude constructs a properly formatted tool use request.
