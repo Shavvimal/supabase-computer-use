@@ -33,7 +33,7 @@ async def agent_endpoint(request: MessageRequest):
     if not request.content_blocks:
         raise HTTPException(status_code=400, detail="No content_blocks provided.")
 
-    # Extract the initial message text and convert content_blocks
+    # Convert content_blocks to the format expected by the assistant
     user_content = []
     initial_message_text = ""
     for block in request.content_blocks:
@@ -50,7 +50,7 @@ async def agent_endpoint(request: MessageRequest):
                 "source": {
                     "type": "base64",
                     "media_type": "image/png",
-                    "data": block.content.get("data", "")
+                    "data": block.content.get("source", {}).get("data", "")
                 }
             })
         elif block.type == "tool_result":
@@ -89,9 +89,9 @@ async def agent_endpoint(request: MessageRequest):
     })
 
     try:
-        # Access the actor
+        # Access the actor and pass metadata
         anthropic_actor = SHARED["anthropic_actor"]
-        assistant_response = anthropic_actor(messages=state["messages"])
+        assistant_response = anthropic_actor(messages=state["messages"], metadata=request.metadata)
 
         # Add assistant's message to messages
         state["messages"].append({
