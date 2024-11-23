@@ -1,6 +1,6 @@
-# Supabase Computer Use Agentic Customer Success
+# Supabase Agentic Customer Success (Computer Use)
 
-Customer Success and FDE's are innundated with questions. Users dont read the docs. How can we automate these tutorials? Our agent hand holds you the entire way, using RAG to fetch the data from the docs, to instruct the user how ot do things. 
+Customer Success and FDE's are innundated with questions. Users dont read the docs. How can we automate these tutorials? Our agent A.N.T hand holds you the entire way, using RAG to fetch the data from the docs, to instruct the user how ot do things. 
 
 ## asdas
 
