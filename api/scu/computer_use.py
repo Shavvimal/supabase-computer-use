@@ -2,13 +2,10 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 import os
 from pydantic import BaseModel
-from anthropic import Anthropic, APIResponse
-from dotenv import load_dotenv
-load_dotenv()
+from anthropic import Anthropic
 from anthropic.types.beta import (
-    BetaMessage,
     BetaMessageParam,
-    BetaContentBlock,
+    BetaContentBlockParam,
 )
 from enum import StrEnum
 from api.scu.tools import ToolCollection, ComputerTool
@@ -16,36 +13,26 @@ from api.scu.tools import ToolCollection, ComputerTool
 class Sender(StrEnum):
     USER = "user"
     BOT = "assistant"
-    TOOL = "tool"
 
-
-# This system prompt is optimized for the Docker environment in this repository and
-# specific tool combinations enabled.
-# We encourage modifying this system prompt to ensure the model has context for the
-# environment it is running in, and to provide any additional information that may be
-# helpful for the task at hand.
 SYSTEM_PROMPT = f"""<SYSTEM_CAPABILITY>
 * You are utilizing a Browser with internet access.
 * The current date is {datetime.today().strftime('%A, %B %d, %Y')}.
 </SYSTEM_CAPABILITY>
 """
 
-# Helper functions
 def setup_state(state):
     if "messages" not in state:
         state["messages"] = []
     if "responses" not in state:
         state["responses"] = {}
 
-# Pydantic models for request and response
+class ContentBlock(BaseModel):
+    type: str  # e.g., "text", "image", "tool_result"
+    content: Dict[str, Any]
+
 class MessageRequest(BaseModel):
     conversation_id: Optional[str] = None
-    message: Optional[str] = None
-    content_blocks: Optional[List[Dict[str, Any]]] = None  # Added content_blocks
-
-class ContentBlock(BaseModel):
-    type: str
-    content: Dict[str, Any]
+    content_blocks: List[ContentBlock]
 
 class MessageResponse(BaseModel):
     conversation_id: str
@@ -56,7 +43,7 @@ class AnthropicActor:
         self,
         max_tokens: int = 4096,
     ):
-        self.model = "claude-3-5-sonnet-20241022",
+        self.model = "claude-3-5-sonnet-20241022"
         self.system_prompt_suffix = f"\n\nNOTE: you are operating a browser. The current date is {datetime.today().strftime('%A, %B %d, %Y')}."
         self.api_key = os.getenv("ANTHROPIC_API_KEY") or ""
         self.max_tokens = max_tokens
@@ -67,6 +54,7 @@ class AnthropicActor:
 
         # Instantiate the Anthropic API client
         self.client = Anthropic(api_key=self.api_key)
+        # Pass tools to the assistant but we won't execute them on the server
         self.tool_collection = ToolCollection(
             ComputerTool(),
         )
@@ -77,9 +65,6 @@ class AnthropicActor:
         messages: List[BetaMessageParam]
     ):
         # Call the API synchronously
-        # we use raw_response to provide debug information to streamlit. Your
-        # implementation may be able call the SDK directly with:
-        # `response = client.messages.create(...)` instead.
         raw_response = self.client.beta.messages.with_raw_response.create(
             max_tokens=self.max_tokens,
             messages=messages,

@@ -34,26 +34,37 @@ async def agent_endpoint(request: MessageRequest):
         setup_state(state)
         conversation_states[conversation_id] = state
 
-    # Handle user message or content_blocks
-    if request.message:
-        # User sent a text message
-        user_content = [TextBlock(type="text", text=request.message)]
-    elif request.content_blocks:
-        # User sent content blocks (e.g., tool results)
-        user_content = request.content_blocks
-    else:
-        raise HTTPException(status_code=400, detail="No message or content_blocks provided.")
+    if not request.content_blocks:
+        raise HTTPException(status_code=400, detail="No content_blocks provided.")
 
+    # Convert content_blocks to the format expected by the assistant
+    user_content = []
+    for block in request.content_blocks:
+        if block.type == "text":
+            user_content.append({
+                "type": "text",
+                "text": block.content.get("text", "")
+            })
+        elif block.type == "image":
+            user_content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": block.content.get("data", "")
+                }
+            })
+        else:
+            # Handle other types as needed
+            user_content.append(block.dict())
 
-    # Append the user's message to the conversation
+    # Append the user's content to the conversation
     state["messages"].append({
         "role": Sender.USER,
         "content": user_content,
     })
 
-
     try:
-
         # Access the actor
         anthropic_actor = SHARED["anthropic_actor"]
         assistant_response = anthropic_actor(messages=state["messages"])
@@ -61,7 +72,7 @@ async def agent_endpoint(request: MessageRequest):
         # Add assistant's message to messages
         state["messages"].append({
             "role": Sender.BOT,
-            "content": cast(List[BetaContentBlockParam], assistant_response.content),
+            "content": assistant_response.content,
         })
 
         content_blocks = []
@@ -69,7 +80,21 @@ async def agent_endpoint(request: MessageRequest):
         # Process assistant's response content
         for content_block in assistant_response.content:
             content_type = content_block.type
-            content_blocks.append(ContentBlock(type=content_type, content=content_block.dict()))
+            if content_type == "text":
+                content_blocks.append(ContentBlock(type="text", content={"text": content_block.text}))
+            elif content_type == "tool_use":
+                content_blocks.append(ContentBlock(type="tool_use", content={
+                    "id": content_block.id,
+                    "name": content_block.name,
+                    "input": content_block.input
+                }))
+            elif content_type == "image":
+                content_blocks.append(ContentBlock(type="image", content={
+                    "source": content_block.source.dict()
+                }))
+            else:
+                # Handle other types if necessary
+                content_blocks.append(ContentBlock(type=content_type, content=content_block.dict()))
 
         return MessageResponse(conversation_id=conversation_id, content=content_blocks)
 
