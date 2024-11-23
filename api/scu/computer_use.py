@@ -1,24 +1,9 @@
 import os
 from datetime import datetime
-from uuid import uuid4
-from typing import Dict, Any, List, Optional
+from typing import List, Optional, Dict, Any
 
-from fastapi import FastAPI, HTTPException, Depends, APIRouter
 from pydantic import BaseModel
-from api.core.auth import verify_token
-from anthropic import Anthropic, APIResponse
-from anthropic.types.beta import (
-    BetaMessage,
-    BetaMessageParam,
-    BetaContentBlock,
-    BetaTextBlock,
-    BetaToolUseBlock,
-)
-
-router = APIRouter(dependencies=[Depends(verify_token)])
-
-
-
+from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
 
 # Helper functions
 def setup_state(state):
@@ -29,7 +14,7 @@ def setup_state(state):
         if not state["api_key"]:
             raise ValueError("API key not found. Please set it in the environment.")
     if "model" not in state:
-        state["model"] = "claude-3-5-sonnet-20241022"
+        state["model"] = "claude-2.1"
     if "custom_system_prompt" not in state:
         device_os_name = (
             "Windows"
@@ -41,10 +26,6 @@ def setup_state(state):
         state["custom_system_prompt"] = f"\n\nNOTE: you are operating a {device_os_name} machine. The current date is {datetime.today().strftime('%A, %B %d, %Y')}."
     if "responses" not in state:
         state["responses"] = {}
-    if "tools" not in state:
-        state["tools"] = {}
-    if "only_n_most_recent_images" not in state:
-        state["only_n_most_recent_images"] = 2  # 10
 
 # Pydantic models for request and response
 class MessageRequest(BaseModel):
@@ -53,32 +34,11 @@ class MessageRequest(BaseModel):
 
 class ContentBlock(BaseModel):
     type: str
-    text: Optional[str] = None
-    name: Optional[str] = None
-    input: Optional[dict] = None
-    id: Optional[str] = None
+    content: Dict[str, Any]
 
 class MessageResponse(BaseModel):
     conversation_id: str
     content: List[ContentBlock]
-
-
-def process_content_block(content_block: BetaContentBlock) -> Optional[ContentBlock]:
-    if isinstance(content_block, BetaTextBlock):
-        return ContentBlock(
-            type='text',
-            text=content_block.text
-        )
-    elif isinstance(content_block, BetaToolUseBlock):
-        return ContentBlock(
-            type='tool_use',
-            name=content_block.name,
-            input=content_block.input,
-            id=content_block.id
-        )
-    else:
-        # Handle other types if necessary
-        return None
 
 # AnthropicActor class
 class AnthropicActor:
@@ -94,45 +54,92 @@ class AnthropicActor:
         self.api_key = api_key
         self.max_tokens = max_tokens
 
-        # System prompt with system capabilities
-        self.system = f"<SYSTEM_CAPABILITY>\n* You are utilizing a machine with internet access.\n* The current date is {datetime.today().strftime('%A, %B %d, %Y')}.\n</SYSTEM_CAPABILITY>{' ' + system_prompt_suffix if system_prompt_suffix else ''}"
+        # System prompt with system capabilities and instructions
+        self.system = f"""
+You are an assistant that can interact with the user's computer via a Chrome extension.
+When you need to perform an action on the user's computer (e.g., clicking, typing, taking a screenshot), you should output a JSON command that the Chrome extension can interpret and execute.
+Your responses should be in the following format:
+
+{{
+    "action": "action_name",
+    "parameters": {{
+        "param1": "value1",
+        ...
+    }}
+}}
+
+For example, to move the mouse to coordinates (100, 200), you would output:
+
+{{
+    "action": "move_mouse",
+    "parameters": {{
+        "x": 100,
+        "y": 200
+    }}
+}}
+
+Do not include any other text in your response when outputting a command.
+If you are just replying to the user, respond normally.
+
+Examples:
+
+User: Open a new browser tab.
+
+Assistant:
+{{
+    "action": "open_tab",
+    "parameters": {{
+        "url": "about:newtab"
+    }}
+}}
+
+User: Type "Hello, world!"
+
+Assistant:
+{{
+    "action": "type_text",
+    "parameters": {{
+        "text": "Hello, world!"
+    }}
+}}
+
+User: What is the current date?
+
+Assistant: The current date is {datetime.today().strftime('%A, %B %d, %Y')}.
+
+<SYSTEM_CAPABILITY>
+* You are utilizing a machine with internet access.
+* The current date is {datetime.today().strftime('%A, %B %d, %Y')}.
+</SYSTEM_CAPABILITY>
+{self.system_prompt_suffix}
+"""
 
         # Instantiate the Anthropic API client
         self.client = Anthropic(api_key=api_key)
 
-        # Define the tools (only include names and types; execution will be on the client)
-        self.tools = [
-            {
-                "name": "computer",
-                "type": "computer_20241022",
-                "display_width_px": 1024,
-                "display_height_px": 768,
-                "display_number": None,
-            },
-            {
-                "name": "bash",
-                "type": "bash_20241022",
-            },
-            {
-                "name": "str_replace_editor",
-                "type": "text_editor_20241022",
-            },
-            # Add other tools if necessary
-        ]
-
     def __call__(
         self,
         *,
-        messages: List[BetaMessageParam]
-    ) -> BetaMessage:
-        # Call the API synchronously
-        response = self.client.beta.messages.create(
-            max_tokens=self.max_tokens,
-            messages=messages,
-            model=self.model,
-            system=self.system,
-            tools=self.tools,
-            betas=["computer-use-2024-10-22"],
-        ).parse()
+        messages: List[dict],
+    ) -> str:
+        # Build the prompt
+        full_prompt = self.system + "\n\n"
 
-        return response
+        # Append messages to the prompt
+        for msg in messages:
+            role = msg["role"]
+            content = msg["content"]
+            if role == "user":
+                full_prompt += f"{HUMAN_PROMPT} {content}\n"
+            elif role == "assistant":
+                full_prompt += f"{AI_PROMPT} {content}\n"
+        full_prompt += AI_PROMPT
+
+        # Call the API synchronously
+        response = self.client.completions.create(
+            prompt=full_prompt,
+            model=self.model,
+            max_tokens_to_sample=self.max_tokens,
+            stop_sequences=[HUMAN_PROMPT],
+        )
+        return response.completion.strip()
