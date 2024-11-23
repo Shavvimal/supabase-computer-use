@@ -12,7 +12,7 @@
   align-items: center;
   justify-content: center;
   transition: all 0.3s ease;
-  z-index: 10000;
+  z-index: 9998;
   border: none;
 }
 
@@ -95,4 +95,56 @@
 .ai-submit-button:disabled {
   background-color: #a0a0a0;
   cursor: not-allowed;
+}
+
+.ai-action-card {
+  position: fixed;
+  right: 20px;
+  background: white;
+  border-radius: 8px;
+  padding: 8px 12px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  z-index: 9999;
+  transition: all 0.3s ease;
+  animation: slideIn 0.3s ease;
+  border: 1px solid #e0e0e0;
+  max-width: 280px;
+  bottom: var(--card-bottom, 70px);
+  opacity: var(--card-opacity, 1);
+  transform: var(--card-transform, translateX(0));
+}
+
+.ai-card-icon {
+  font-size: 16px;
+}
+
+.ai-card-text {
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.ai-action-card.removing {
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+.ai-action-card.stacked {
+  --card-opacity: var(--stack-opacity);
 } 

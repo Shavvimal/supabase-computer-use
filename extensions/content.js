@@ -1,3 +1,6 @@
+// Add counter at the top level of the file
+let mockResponseCounter = 0;
+
 // Function to simulate mouse movement
 function moveMouseTo(x, y) {
   return new Promise(resolve => {
@@ -102,14 +105,163 @@ const MESSAGE_HANDLERS = {
   }
 };
 
+const MOCK_RESPONSES = [
+  {
+    "conversation_id": "123e4567-e89b-12d3-a456-426614174000",
+    "content": [
+      {
+        "action": "mouse_move",
+        "text": null,
+        "coordinate": [500, 300],
+        "wait_ms": 50,
+        "screenshot": null
+      }
+    ]
+  },
+  {
+    "conversation_id": "123e4567-e89b-12d3-a456-426614174001", 
+    "content": [
+      {
+        "action": "left_click",
+        "text": null,
+        "coordinate": null,
+        "wait_ms": 50,
+        "screenshot": null
+      }
+    ]
+  },
+  {
+    "conversation_id": "123e4567-e89b-12d3-a456-426614174002",
+    "content": [
+      {
+        "action": "type",
+        "text": "Hello, I'm typing some text",
+        "coordinate": null,
+        "wait_ms": 276,
+        "screenshot": null
+      }
+    ]
+  },
+  {
+    "conversation_id": "123e4567-e89b-12d3-a456-426614174003",
+    "content": [
+      {
+        "action": "key",
+        "text": "Enter",
+        "coordinate": null,
+        "wait_ms": 60,
+        "screenshot": null
+      }
+    ]
+  },
+  {
+    "conversation_id": "123e4567-e89b-12d3-a456-426614174004",
+    "content": [
+      {
+        "action": "mouse_move",
+        "text": null,
+        "coordinate": [800, 600],
+        "wait_ms": 50,
+        "screenshot": null
+      }
+    ]
+  },
+  {
+    "conversation_id": "123e4567-e89b-12d3-a456-426614174005",
+    "content": [
+      {
+        "action": "right_click",
+        "text": null,
+        "coordinate": null,
+        "wait_ms": 50,
+        "screenshot": null
+      }
+    ]
+  }
+] = {
+    "conversation_id": "123e4567-e89b-12d3-a456-426614174000",
+    "content": [
+      // Sequential instructions that would be executed one after another
+      {
+        "action": "mouse_move",
+        "text": null,
+        "coordinate": [500, 300],
+        "wait_ms": 50,
+        "screenshot": null
+      },
+      {
+        "action": "left_click",
+        "text": null,
+        "coordinate": null,
+        "wait_ms": 50,
+        "screenshot": null
+      },
+      {
+        "action": "type",
+        "text": "Hello, I'm typing some text",
+        "coordinate": null,
+        "wait_ms": 276,
+        "screenshot": null
+      },
+      {
+        "action": "key",
+        "text": "Enter",
+        "coordinate": null,
+        "wait_ms": 60,
+        "screenshot": null
+      },
+      {
+        "action": "mouse_move",
+        "text": null,
+        "coordinate": [800, 600],
+        "wait_ms": 50,
+        "screenshot": null
+      },
+      {
+        "action": "right_click",
+        "text": null,
+        "coordinate": null,
+        "wait_ms": 50,
+        "screenshot": null
+      }
+    ]
+  }
+
 // Handle floating button instruction execution
 async function executeInstruction(instruction) {
   const handler = MESSAGE_HANDLERS[instruction.action];
   if (handler) {
+    // Create and add action card
+    const card = createActionCard(instruction);
+    const container = document.querySelector('.ai-floating-button');
+    document.body.appendChild(card);
+    
+    // Set initial position using CSS custom property
+    const containerRect = container.getBoundingClientRect();
+    card.style.setProperty('--card-bottom', `${containerRect.height + 20}px`);
+    
+    // Adjust positions of existing cards
+    const existingCards = document.querySelectorAll('.ai-action-card');
+    existingCards.forEach((existingCard, index) => {
+      if (existingCard !== card) {
+        const newBottom = containerRect.height + 20 + ((index + 1) * 60);
+        existingCard.style.setProperty('--card-bottom', `${newBottom}px`);
+        existingCard.classList.add('stacked');
+        existingCard.style.setProperty('--stack-opacity', Math.max(0, 1 - (index * 0.2)));
+      }
+    });
+    
+    // Execute the action
     await handler(instruction);
     if (instruction.wait_ms) {
       await new Promise(resolve => setTimeout(resolve, instruction.wait_ms));
     }
+    
+    // Animate out and remove card after delay
+    setTimeout(() => {
+      card.classList.add('removing');
+      setTimeout(() => card.remove(), 300);
+    }, 2000);
   }
 }
 
@@ -169,17 +321,17 @@ function createFloatingButton() {
         submitButton.disabled = true;
         textarea.value = 'Processing...';
 
-        // Send query to your backend API
-        const response = await fetch('http://localhost:8001/agent', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ message: prompt })
-        });
+        // Simulate API delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
-        const instruction = await response.json();
-        await executeInstruction(instruction);
+        // Get next mock response and increment counter
+        const mockResponse = MOCK_RESPONSES[mockResponseCounter];
+        mockResponseCounter = (mockResponseCounter + 1) % MOCK_RESPONSES.length;
+
+        // Execute instructions from mock response
+        for (const instruction of mockResponse.content) {
+          await executeInstruction(instruction);
+        }
 
         // Clear and re-enable inputs
         textarea.value = '';
@@ -228,7 +380,40 @@ function createFloatingButton() {
   return container;
 }
 
-// Inject styles
+// Add this function after createFloatingButton but before init()
+function createActionCard(instruction) {
+  const card = document.createElement('div');
+  card.className = 'ai-action-card';
+  
+  // Create icon based on action type
+  const iconMap = {
+    mouse_move: '🖱️',
+    left_click: '👆',
+    right_click: '👆',
+    double_click: '👆👆',
+    type: '⌨️',
+    key: '🔤'
+  };
+  
+  const icon = iconMap[instruction.action] || '❓';
+  
+  // Create card content
+  let text = instruction.action.replace('_', ' ');
+  if (instruction.text) {
+    text += `: "${instruction.text}"`;
+  } else if (instruction.coordinate) {
+    text += `: (${instruction.coordinate[0]}, ${instruction.coordinate[1]})`;
+  }
+  
+  card.innerHTML = `
+    <span class="ai-card-icon">${icon}</span>
+    <span class="ai-card-text">${text}</span>
+  `;
+  
+  return card;
+}
+
+// Update the injectStyles function to use external stylesheet
 function injectStyles() {
   const link = document.createElement('link');
   link.rel = 'stylesheet';
