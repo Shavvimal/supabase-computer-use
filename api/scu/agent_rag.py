@@ -305,25 +305,25 @@ class AgenticRAG:
     def setup_workflow(self):
         workflow = StateGraph(GraphState)
         # Define the nodes
-        workflow.add_node("web_search_node", self.web_search)
-        workflow.add_node("grade_documents", self.grade_documents)
+        # workflow.add_node("web_search_node", self.web_search)
+        # workflow.add_node("grade_documents", self.grade_documents)
         workflow.add_node("similarity_search", self.similarity_search)
-        workflow.add_node("transform_query", self.transform_query)
-        workflow.add_node("web_search_retry", self.web_search)
+        # workflow.add_node("transform_query", self.transform_query)
+        # workflow.add_node("web_search_retry", self.web_search)
         workflow.add_node("generate", self.generate)
         # Build graph
-        workflow.add_edge(START, "web_search_node")
-        workflow.add_edge("web_search_node", "grade_documents")
-        workflow.add_conditional_edges(
-            "grade_documents",
-            self.decide_to_generate,
-            {
-                "transform_query": "transform_query",
-                "similarity_search": "similarity_search",
-            },
-        )
-        workflow.add_edge("transform_query", "web_search_retry")
-        workflow.add_edge("web_search_retry", "grade_documents")
+        workflow.add_edge(START, "similarity_search")
+        # workflow.add_edge("web_search_node", "grade_documents")
+        # workflow.add_conditional_edges(
+        #     "grade_documents",
+        #     self.decide_to_generate,
+        #     {
+        #         "transform_query": "transform_query",
+        #         "similarity_search": "similarity_search",
+        #     },
+        # )
+        # workflow.add_edge("transform_query", "web_search_retry")
+        # workflow.add_edge("web_search_retry", "grade_documents")
         workflow.add_edge("similarity_search", "generate")
         workflow.add_edge("generate", END)
         # Compile
@@ -339,5 +339,5 @@ class AgenticRAG:
 
 if __name__ == '__main__':
     agent = AgenticRAG()
-    result = agent.invoke("How do I create a bucket?")
+    result = agent.invoke("How do I enable the pgvector extension?")
     print(result)

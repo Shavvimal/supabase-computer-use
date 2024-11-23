@@ -38,7 +38,7 @@ class Embedder:
         self.token_rate_limiter = AsyncLimiter(5833, 1)
         # Initialize Supabase client
         SUPABASE_URL = os.environ.get("SUPABASE_URL")
-        SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+        SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY")
         self.supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
         # Semaphore to limit concurrency
         self.semaphore = asyncio.Semaphore(35)  # Limit to 35 concurrent requests
