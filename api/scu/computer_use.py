@@ -98,6 +98,7 @@ class AnthropicActor:
         - Ensure coordinates are non-negative integers
         - Wait appropriate intervals between mouse movements and clicks
         * You MUST NOT always return the ACTION parameter.
+        - All mouse move actions should be paired with a click. Meaning, calling the mouse_move tool should always be followed by a call to the left_click tool.
         </SYSTEM_CAPABILITY>
         """
         if metadata:

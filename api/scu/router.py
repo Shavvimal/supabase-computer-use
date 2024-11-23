@@ -69,9 +69,9 @@ async def agent_endpoint(request: MessageRequest):
                     "is_error": block.content.get("is_error", False),
                     "content": block.content.get("content", [])
                 })
-        else:
-            # Handle other types as needed
-            user_content.append(block.dict())
+        # else:
+        #     # Handle other types as needed
+        #     user_content.append(block.dict())
 
     # If conversation_id is not provided, invoke the extraction agent
     if not request.conversation_id:
@@ -131,6 +131,8 @@ async def agent_endpoint(request: MessageRequest):
                         "content": matching_result.content.get("content", [])
                     }],
                 })
+
+    print(state['messages'][0])
 
     try:
         # Access the actor and pass metadata

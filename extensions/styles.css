@@ -53,15 +53,15 @@
 
 .ai-submit-button {
   padding: 8px 16px;
-  background: #007bff;
-  color: white;
-  border: none;
+  background: rgba(99, 221, 164, 0.93);
+  color: rgb(23, 23, 23);
+  border: 1px solid rgba(22, 182, 116, 0.75);
   border-radius: 6px;
   cursor: pointer;
 }
 
 .ai-submit-button:hover {
-  background: #0056b3;
+  background: rgba(89, 199, 148, 0.93);
 }
 
 .ai-message-card {
@@ -129,4 +129,40 @@
   transition: opacity 0.2s ease-out;
   max-width: 200px;
   text-align: center;
+}
+
+.ai-message-card.loading {
+  opacity: 0.7;
+}
+
+.loading-animation {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 8px;
+}
+
+.loading-animation .dot {
+  width: 8px;
+  height: 8px;
+  background: #666;
+  border-radius: 50%;
+  animation: bounce 1.4s infinite ease-in-out;
+}
+
+.loading-animation .dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.loading-animation .dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes bounce {
+  0%, 80%, 100% { 
+    transform: scale(0);
+  } 
+  40% { 
+    transform: scale(1.0);
+  }
 } 

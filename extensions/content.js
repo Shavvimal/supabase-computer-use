@@ -136,9 +136,7 @@ const MESSAGE_HANDLERS = {
         }
 
         // Create and append message card showing what was clicked
-        const messageCard = document.createElement('div');
-        messageCard.className = 'ai-message-card';
-        messageCard.innerHTML = `Clicked`;
+        const messageCard = createMessageCard('Clicked', true);
         appendMessageCard(messageCard);
 
         document.removeEventListener('click', clickHandler);
@@ -359,7 +357,13 @@ async function sendToAPI(prompt, isFollowUp = false) {
           cookieEnabled: navigator.cookieEnabled,
           doNotTrack: navigator.doNotTrack,
           vendor: navigator.vendor,
-          maxTouchPoints: navigator.maxTouchPoints
+          maxTouchPoints: navigator.maxTouchPoints,
+          url: window.location.href,
+          pathname: window.location.pathname,
+          hostname: window.location.hostname,
+          protocol: window.location.protocol,
+          search: window.location.search,
+          hash: window.location.hash
         },
         connection: {
           type: navigator.connection?.type,
@@ -609,15 +613,25 @@ async function playAngryAntStream() {
   }
 }
 
-// Update the handleSubmit function
+// Update the handleSubmit function to show loading states
 async function handleSubmit() {
   const prompt = textarea.value.trim();
   if (prompt) {
     try {
+      const userMessageCard = createMessageCard({
+        type: 'text',
+        content: { text: prompt }
+      }, true);
+      appendMessageCard(userMessageCard);
+
       // Show loading state
       textarea.disabled = true;
       submitButton.disabled = true;
-      textarea.value = 'Processing...';
+      textarea.value = '';
+
+      // Add initial loading card
+      const loadingCard = createLoadingCard();
+      appendMessageCard(loadingCard);
 
       // Start API call immediately
       const responsePromise = sendToAPI(prompt);
@@ -630,6 +644,10 @@ async function handleSubmit() {
 
       // Wait for API response
       let response = await responsePromise;
+
+      // Remove initial loading card
+      const loadingCards = document.querySelectorAll('.ai-message-card.loading');
+      loadingCards.forEach(card => card.remove());
 
       // Set processing flag
       isProcessingTurn = true;
@@ -647,8 +665,7 @@ async function handleSubmit() {
         const audioPromises = textBlocks.map(block => {
           const card = createMessageCard(block);
           appendMessageCard(card);
-          //textToSpeech(block.content.text);
-          return
+          return;
         });
 
         // Process tool blocks
@@ -657,26 +674,47 @@ async function handleSubmit() {
           appendMessageCard(card);
 
           if (block.content.name && block.content.input) {
+            // Add loading card before executing instruction
+            const loadingCard = createLoadingCard();
+            appendMessageCard(loadingCard);
+
             const instruction = {
               action: block.content.name,
               ...block.content.input
             };
-            // Pass tool_use_id to executeInstruction
-            await executeInstruction(instruction, block.content.id);
+            
+            // Execute instruction and get result
+            const result = await executeInstruction(instruction, block.content.id);
+            
+            // Remove loading card
+            loadingCard.remove();
+            
+            // If there's a result, show it
+            if (result) {
+              const resultCard = createMessageCard(result);
+              appendMessageCard(resultCard);
+            }
           }
         });
 
         // Wait for all operations to complete
         await Promise.all([...audioPromises, ...toolPromises]);
 
-        // Break the loop if end_turn is true
-        if (response.end_turn) {
+        // Break the loop if end_turn is true or if there are no tool blocks
+        if (response.end_turn || toolBlocks.length === 0) {
           isProcessingTurn = false;
           break;
         }
 
+        // Add loading card before making next API call
+        const nextLoadingCard = createLoadingCard();
+        appendMessageCard(nextLoadingCard);
+
         // Make another API call with any pending tool results
         response = await sendToAPI(prompt, true);
+
+        // Remove loading card after getting response
+        nextLoadingCard.remove();
       }
 
       // Clear and re-enable inputs
@@ -894,4 +932,23 @@ function createOrUpdateMouseIndicator(x, y) {
   mouseIndicator.style.transform = 'scale(1)';
   mouseIndicator.style.left = `${x - 10}px`;
   mouseIndicator.style.top = `${y - 10}px`;
+}
+
+// Add this function to create loading placeholder cards
+function createLoadingCard() {
+  const card = document.createElement('div');
+  card.className = 'ai-message-card loading';
+  
+  card.innerHTML = `
+    <span class="ai-card-icon">⏳</span>
+    <div class="ai-card-content">
+      <div class="loading-animation">
+        <span class="dot"></span>
+        <span class="dot"></span>
+        <span class="dot"></span>
+      </div>
+    </div>
+  `;
+  
+  return card;
 } 
