@@ -216,7 +216,7 @@ class AgenticRAG:
         question = state["question"]
 
         # Run the similarity search
-        documents = asyncio.run(self.similarity_search_tool.query_similar_docs(question))
+        documents = self.similarity_search_tool.query_similar_docs(question)
 
         # Update state
         state_documents = state.get("documents", [])
