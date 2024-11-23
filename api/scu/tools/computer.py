@@ -4,16 +4,15 @@ from anthropic.types.beta import BetaToolComputerUse20241022Param
 from .base import BaseAnthropicTool, ToolError, ToolResult
 
 Action = Literal[
-    "key",
     "type",
     "mouse_move",
     "left_click",
-    "left_click_drag",
-    "right_click",
-    "middle_click",
-    "double_click",
-    "screenshot",
-    "cursor_position",
+    # "left_click_drag",
+    # "right_click",
+    # "middle_click",
+    # "double_click",
+    # "screenshot",
+    # "cursor_position",
 ]
 
 class Resolution(TypedDict):
@@ -75,6 +74,8 @@ class ComputerTool(BaseAnthropicTool):
             "wait_ms": 50,
             "screenshot": None
         }
+
+        print(instruction)
 
         if action in ("mouse_move", "left_click_drag"):
             if coordinate is None:

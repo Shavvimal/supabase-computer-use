@@ -13,12 +13,6 @@ class Sender(StrEnum):
     USER = "user"
     BOT = "assistant"
 
-SYSTEM_PROMPT = f"""<SYSTEM_CAPABILITY>
-* You are utilizing a Browser with internet access.
-* The current date is {datetime.today().strftime('%A, %B %d, %Y')}.
-</SYSTEM_CAPABILITY>
-"""
-
 def setup_state(state):
     if "messages" not in state:
         state["messages"] = []
@@ -96,6 +90,15 @@ class AnthropicActor:
         * The current date is {datetime.today().strftime('%A, %B %d, %Y')}.
         * You can interact with the browser and web pages directly using the provided tools.
         * You should not attempt to open another browser; interact with the web directly through the current browser.
+
+        * You must ALWAYS include the action parameter when calling a tool.
+        * When using mouse actions:
+        - Always use absolute pixel coordinates within the browser window dimensions
+        - For clicking, first move the cursor to the target location, then perform the click action
+        - Ensure coordinates are non-negative integers
+        - Wait appropriate intervals between mouse movements and clicks
+        * You MUST NOT always return the ACTION parameter.
+        - All mouse move actions should be paired with a click. Meaning, calling the mouse_move tool should always be followed by a call to the left_click tool.
         </SYSTEM_CAPABILITY>
         """
         if metadata:
