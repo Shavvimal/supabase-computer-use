@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from api.scu.router import router as scu_router
 from api.scu.agent_rag import AgenticRAG
 from supabase import create_client, Client
-
+from api.scu.computer_use import AnthropicActor
 from logging import getLogger
 
 load_dotenv()
@@ -29,6 +29,13 @@ async def lifespan(app: FastAPI):
 
     try:
         SHARED["extraction_agent"] = AgenticRAG()
+    except Exception as e:
+        logger.error(f"Failed to initialize extraction_agent: {e}")
+
+    try:
+        SHARED["anthropic_actor"] = AnthropicActor(
+            max_tokens=4096
+        )
     except Exception as e:
         logger.error(f"Failed to initialize extraction_agent: {e}")
 

@@ -1979,15 +1979,90 @@ from api.core.auth import verify_token
 from api.utils.constants import SHARED
 from typing import Dict, Any, List, Optional
 
-from api.scu.computer_use import (
+import json
+from fastapi import HTTPException, APIRouter
+from typing import Dict, Any, List
+from uuid import uuid4
+
+from .computer_use import (
     setup_state,
     AnthropicActor,
-    process_content_block,
     MessageRequest,
     MessageResponse,
+    ContentBlock,
 )
-router = APIRouter(dependencies=[Depends(verify_token)])
 
+from uuid import uuid4
+from fastapi import HTTPException, APIRouter
+from typing import Dict, Any, List
+import json
+
+from .computer_use import (
+    setup_state,
+    AnthropicActor,
+    MessageRequest,
+    MessageResponse,
+    ContentBlock,
+)
+
+router = APIRouter()
+
+# In-memory store for conversation states
+conversation_states: Dict[str, Dict[str, Any]] = {}
+
+@router.post("/agent")
+async def agent_endpoint(request: MessageRequest):
+    conversation_id = request.conversation_id or str(uuid4())
+
+    # Retrieve or create the conversation state
+    if conversation_id in conversation_states:
+        state = conversation_states[conversation_id]
+    else:
+        state = {}
+        setup_state(state)
+        conversation_states[conversation_id] = state
+
+    # Add user message to messages
+    state["messages"].append(
+        {
+            "role": "user",
+            "content": request.message,
+        }
+    )
+
+    try:
+        # Create the actor
+        actor = AnthropicActor(
+            model=state["model"],
+            system_prompt=state["system_prompt"],
+            api_key=state["api_key"],
+            max_tokens=4096,
+        )
+
+        assistant_response = actor(messages=state["messages"])
+
+        # Add assistant's message to messages
+        state["messages"].append(
+            {
+                "role": "assistant",
+                "content": assistant_response,
+            }
+        )
+
+        content_blocks = []
+
+        # Try to parse the assistant's response as JSON
+        try:
+            command = json.loads(assistant_response)
+            content_blocks.append(ContentBlock(type="command", content=command))
+        except json.JSONDecodeError:
+            # Not a command, treat as normal text
+            content_blocks.append(ContentBlock(type="text", content={"text": assistant_response}))
+
+        return MessageResponse(conversation_id=conversation_id, content=content_blocks)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/agent-rag")
 async def search_companies_endpoint(
@@ -2010,60 +2085,6 @@ async def search_companies_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# In-memory store for conversation states
-conversation_states: Dict[str, Dict[str, Any]] = {}
-
-# Endpoint definition
-@router.post("/agent")
-async def agent_endpoint(request: MessageRequest):
-    conversation_id = request.conversation_id or str(uuid4())
-
-    # Retrieve or create the conversation state
-    if conversation_id in conversation_states:
-        state = conversation_states[conversation_id]
-    else:
-        state = {}
-        setup_state(state)
-        conversation_states[conversation_id] = state
-
-    # Add user message to messages
-    state["messages"].append(
-        {
-            "role": "user",
-            "content": [{"type": "text", "text": request.message}],
-        }
-    )
-
-    try:
-        # Create the actor
-        actor = AnthropicActor(
-            model=state["model"],
-            system_prompt_suffix=state["custom_system_prompt"],
-            api_key=state["api_key"],
-            max_tokens=4096,
-        )
-
-        response = actor(messages=state["messages"])
-
-        # Add assistant's message to messages
-        state["messages"].append(
-            {
-                "role": "assistant",
-                "content": response.content,
-            }
-        )
-
-        # Process the assistant's response content blocks
-        content_blocks = []
-        for content_block in response.content:
-            processed_block = process_content_block(content_block)
-            if processed_block:
-                content_blocks.append(processed_block)
-
-        return MessageResponse(conversation_id=conversation_id, content=content_blocks)
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 ```
 
 Here is the `computer_use.py`:
@@ -2071,21 +2092,28 @@ Here is the `computer_use.py`:
 ```python
 import os
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
-from fastapi import Depends, APIRouter
 from pydantic import BaseModel
-from api.core.auth import verify_token
 from anthropic import Anthropic
+
 from anthropic.types.beta import (
+
     BetaMessage,
     BetaMessageParam,
-    BetaContentBlock,
-    BetaTextBlock,
-    BetaToolUseBlock,
 )
 
-router = APIRouter(dependencies=[Depends(verify_token)])
+from api.scu.tools.collection import ToolCollection
+from api.scu.tools.computer import ComputerTool
+
+BETA_FLAG = "computer-use-2024-10-22"
+ANTHROPIC_MODEL = "claude-3-5-sonnet-20241022"
+
+SYSTEM_PROMPT = f"""<SYSTEM_CAPABILITY>
+* You are utilizing a Windows system with internet access.
+* The current date is {datetime.today().strftime('%A, %B %d, %Y')}.
+</SYSTEM_CAPABILITY>
+"""
 
 # Helper functions
 def setup_state(state):
@@ -2096,8 +2124,8 @@ def setup_state(state):
         if not state["api_key"]:
             raise ValueError("API key not found. Please set it in the environment.")
     if "model" not in state:
-        state["model"] = "claude-3-5-sonnet-20241022"
-    if "custom_system_prompt" not in state:
+        state["model"] = "claude-3-5-sonnet-20241022"  # Updated model
+    if "system_prompt_suffix" not in state:
         device_os_name = (
             "Windows"
             if os.name == "nt"
@@ -2105,13 +2133,10 @@ def setup_state(state):
             if os.uname().sysname == "Darwin"
             else "Linux"
         )
-        state["custom_system_prompt"] = f"\n\nNOTE: you are operating a {device_os_name} machine. The current date is {datetime.today().strftime('%A, %B %d, %Y')}."
+        state["system_prompt_suffix"] = f"\n\nNOTE: you are operating a {device_os_name} machine. The current date is {datetime.today().strftime('%A, %B %d, %Y')}."
     if "responses" not in state:
         state["responses"] = {}
-    if "tools" not in state:
-        state["tools"] = {}
-    if "only_n_most_recent_images" not in state:
-        state["only_n_most_recent_images"] = 2  # 10
+
 
 # Pydantic models for request and response
 class MessageRequest(BaseModel):
@@ -2120,100 +2145,116 @@ class MessageRequest(BaseModel):
 
 class ContentBlock(BaseModel):
     type: str
-    text: Optional[str] = None
-    name: Optional[str] = None
-    input: Optional[dict] = None
-    id: Optional[str] = None
+    content: Dict[str, Any]
 
 class MessageResponse(BaseModel):
     conversation_id: str
     content: List[ContentBlock]
 
+from typing import Callable
 
-def process_content_block(content_block: BetaContentBlock) -> Optional[ContentBlock]:
-    if isinstance(content_block, BetaTextBlock):
-        return ContentBlock(
-            type='text',
-            text=content_block.text
-        )
-    elif isinstance(content_block, BetaToolUseBlock):
-        return ContentBlock(
-            type='tool_use',
-            name=content_block.name,
-            input=content_block.input,
-            id=content_block.id
-        )
-    else:
-        # Handle other types if necessary
-        return None
-
-# AnthropicActor class
 class AnthropicActor:
     def __init__(
         self,
         model: str,
         system_prompt_suffix: str,
         api_key: str,
+        api_response_callback: Callable[[APIResponse[BetaMessage]], None],
         max_tokens: int = 4096,
+        only_n_most_recent_images: int | None = None,
+        selected_screen: int = 0,
     ):
         self.model = model
         self.system_prompt_suffix = system_prompt_suffix
         self.api_key = api_key
+        self.api_response_callback = api_response_callback
         self.max_tokens = max_tokens
+        self.only_n_most_recent_images = only_n_most_recent_images
 
-        # System prompt with system capabilities
-        self.system = f"<SYSTEM_CAPABILITY>\n* You are utilizing a machine with internet access.\n* The current date is {datetime.today().strftime('%A, %B %d, %Y')}.\n</SYSTEM_CAPABILITY>{' ' + system_prompt_suffix if system_prompt_suffix else ''}"
+        # Since we're removing local tools, we'll not define them here
+        self.tool_collection = ToolCollection()  # Empty ToolCollection
+
+        self.system = (
+            f"{SYSTEM_PROMPT}{' ' + system_prompt_suffix if system_prompt_suffix else ''}"
+        )
 
         # Instantiate the Anthropic API client
         self.client = Anthropic(api_key=api_key)
 
-        # Define the tools (only include names and types; execution will be on the client)
-        self.tools = [
-            {
-                "name": "computer",
-                "type": "computer_20241022",
-                "display_width_px": 1024,
-                "display_height_px": 768,
-                "display_number": None,
-            },
-            {
-                "name": "bash",
-                "type": "bash_20241022",
-            },
-            {
-                "name": "str_replace_editor",
-                "type": "text_editor_20241022",
-            },
-            # Add other tools if necessary
-        ]
-
     def __call__(
         self,
         *,
-        messages: List[BetaMessageParam]
-    ) -> BetaMessage:
+        messages: list[BetaMessageParam]
+    ):
+        if self.only_n_most_recent_images:
+            _maybe_filter_to_n_most_recent_images(messages, self.only_n_most_recent_images)
+
         # Call the API synchronously
-        response = self.client.beta.messages.create(
+        raw_response = self.client.beta.messages.with_raw_response.create(
             max_tokens=self.max_tokens,
             messages=messages,
             model=self.model,
             system=self.system,
-            tools=self.tools,
-            betas=["computer-use-2024-10-22"],
-        ).parse()
+            tools=self.tool_collection.to_params(),
+            betas=[BETA_FLAG],
+        )
+
+        self.api_response_callback(cast(APIResponse[BetaMessage], raw_response))
+
+        response = raw_response.parse()
 
         return response
 
+
+def _maybe_filter_to_n_most_recent_images(
+    messages: list[BetaMessageParam],
+    images_to_keep: int,
+    min_removal_threshold: int = 10,
+):
+    """
+    With the assumption that images are screenshots that are of diminishing value as
+    the conversation progresses, remove all but the final `images_to_keep` tool_result
+    images in place, with a chunk of min_removal_threshold to reduce the amount we
+    break the implicit prompt cache.
+    """
+    if images_to_keep is None:
+        return messages
+
+    tool_result_blocks = cast(
+        list[ToolResultBlockParam],
+        [
+            item
+            for message in messages
+            for item in (
+                message["content"] if isinstance(message["content"], list) else []
+            )
+            if isinstance(item, dict) and item.get("type") == "tool_result"
+        ],
+    )
+
+    total_images = sum(
+        1
+        for tool_result in tool_result_blocks
+        for content in tool_result.get("content", [])
+        if isinstance(content, dict) and content.get("type") == "image"
+    )
+
+    images_to_remove = total_images - images_to_keep
+    # for better cache behavior, we want to remove in chunks
+    images_to_remove -= images_to_remove % min_removal_threshold
+
+    for tool_result in tool_result_blocks:
+        if isinstance(tool_result.get("content"), list):
+            new_content = []
+            for content in tool_result.get("content", []):
+                if isinstance(content, dict) and content.get("type") == "image":
+                    if images_to_remove > 0:
+                        images_to_remove -= 1
+                        continue
+                new_content.append(content)
+            tool_result["content"] = new_content
 ```
 
 refactor the provided code. We are trying to remove PyQt5 GUI and put the logic into a FastAPI endpoint that can be called from a Chrome extension. The goal is to create an API that accepts user messages, processes them through the existing logic (including interactions with the Anthropic API and tools), and returns the assistant's response.
 
  The original code includes tools that interact with the local system (e.g., taking screenshots and clicking). This will be done by the chrome extension now, so we do not need this logic on the server.
- 
-Here is an error to avoid:
-
-```
-{
-  "detail": "Error code: 404 - {'type': 'error', 'error': {'type': 'not_found_error', 'message': 'model: \"claude-2\" is a legacy model alias and is not supported in this API. Did you mean \"claude-2.1\"?'}}"
-}
-```
