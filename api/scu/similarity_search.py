@@ -41,7 +41,7 @@ class SimilaritySearch:
             print(f"Error fetching embedding for text. Error: {e}")
             return None
 
-    def query_similar_docs(self, query_text, match_threshold=0.4, match_count=5):
+    def query_similar_docs(self, query_text, match_threshold=0.5, match_count=5):
         # First, embed the query text
         print("Embedding the query text...")
         query_embedding = self.embed_text_api(query_text)
@@ -82,6 +82,6 @@ if __name__ == '__main__':
     from dotenv import load_dotenv
     load_dotenv()
     search = SimilaritySearch()
-    query = "How to setup Auth?"
+    query = "How do I enable the pgvector extension?"
     docs = search.query_similar_docs(query)
     print(docs)
