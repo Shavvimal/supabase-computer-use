@@ -13,6 +13,10 @@ let isProcessingTurn = false;
 // Add this at the top level of the file
 let pendingToolResults = [];
 
+// Add these at the top level of the file
+let textarea;
+let submitButton;
+
 // Function to simulate mouse movement
 function moveMouseTo(x, y) {
   return new Promise(resolve => {
@@ -104,15 +108,38 @@ const MESSAGE_HANDLERS = {
   },
   
   screenshot: async () => {
-    return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({action: 'screenshot'}, response => {
-        if (response?.imgSrc) {
+    console.log('Taking screenshot...');
+    try {
+      const response = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({action: 'screenshot'}, response => {
+          if (chrome.runtime.lastError) {
+            console.error('Chrome runtime error:', chrome.runtime.lastError);
+            reject(chrome.runtime.lastError);
+            return;
+          }
+          
+          if (response?.error) {
+            console.error('Screenshot error:', response.error);
+            reject(new Error(response.error));
+            return;
+          }
+          
+          if (!response?.imgSrc) {
+            console.error('No image data in response');
+            reject(new Error('Failed to capture screenshot - no image data'));
+            return;
+          }
+          
           resolve(response.imgSrc);
-        } else {
-          reject(new Error('Failed to capture screenshot'));
-        }
+        });
       });
-    });
+      
+      console.log('Screenshot captured successfully');
+      return response;
+    } catch (error) {
+      console.error('Screenshot capture failed:', error);
+      throw error;
+    }
   },
   
   cursor_position: (instruction) => {
@@ -135,12 +162,29 @@ const MESSAGE_HANDLERS = {
 async function sendToAPI(prompt, isFollowUp = false) {
   let contentBlocks = [];
   
-  // Add user message if not a follow-up
+  // Add user message and screenshot if not a follow-up
   if (!isFollowUp) {
+    // First add the user message block
     contentBlocks.push({
       type: "text",
       content: { text: prompt }
     });
+
+    // Then capture and add screenshot
+    try {
+      const screenshotData = await MESSAGE_HANDLERS.screenshot();
+      contentBlocks.push({
+        type: "image",
+        content: {
+          source: {
+            type: "base64",
+            data: screenshotData
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Failed to capture initial screenshot:', error);
+    }
   }
   
   // Add any pending tool results
@@ -318,6 +362,128 @@ document.addEventListener('mousemove', (e) => {
   window.mouseY = e.clientY;
 });
 
+// Update the playAngryAntStream function
+async function playAngryAntStream() {
+  try {
+    // Initialize audio context first
+    const context = initAudioContext();
+    if (context.state === 'suspended') {
+      await context.resume();
+    }
+
+    const response = await fetch('http://localhost:8000/angry-ant', {
+      method: 'POST',
+      headers: {
+        'Accept': 'audio/mpeg',
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch angry ant audio');
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = await context.decodeAudioData(arrayBuffer);
+    
+    const source = context.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(context.destination);
+    source.start(0);
+
+    // Return a promise that resolves when the audio finishes
+    return new Promise((resolve) => {
+      source.onended = () => {
+        resolve(source);
+      };
+    });
+  } catch (error) {
+    console.error('Error playing angry ant:', error);
+    return null;
+  }
+}
+
+// Update the handleSubmit function
+async function handleSubmit() {
+  const prompt = textarea.value.trim();
+  if (prompt) {
+    try {
+      // Show loading state
+      textarea.disabled = true;
+      submitButton.disabled = true;
+      textarea.value = 'Processing...';
+
+      // Start the angry ant sound first and wait for it to initialize
+      const angryAntPromise = playAngryAntStream();
+      const response = await sendToAPI(prompt);
+
+      // Set processing flag
+      isProcessingTurn = true;
+
+      // Get the audio source once it's ready
+      const angryAntSound = await angryAntPromise;
+
+      // Continue processing until end_turn is true
+      while (isProcessingTurn) {
+        // Process text blocks
+        const textBlocks = response.content.filter(block => block.type === 'text');
+        const toolBlocks = response.content.filter(block => block.type === 'tool_use');
+        
+        // Process text blocks
+        const audioPromises = textBlocks.map(block => {
+          const card = createMessageCard(block);
+          appendMessageCard(card);
+          return textToSpeech(block.content.text);
+        });
+
+        // Process tool blocks
+        const toolPromises = toolBlocks.map(async block => {
+          const card = createMessageCard(block);
+          appendMessageCard(card);
+          
+          if (block.content.name && block.content.input) {
+            const instruction = {
+              action: block.content.name,
+              ...block.content.input
+            };
+            // Pass tool_use_id to executeInstruction
+            await executeInstruction(instruction, block.id);
+          }
+        });
+
+        // Wait for all operations to complete
+        await Promise.all([...audioPromises, ...toolPromises]);
+
+        // Break the loop if end_turn is true
+        if (response.end_turn) {
+          isProcessingTurn = false;
+          break;
+        }
+
+        // Make another API call with any pending tool results
+        response = await sendToAPI(prompt, true);
+      }
+
+      // Clear and re-enable inputs
+      textarea.value = '';
+      textarea.disabled = false;
+      submitButton.disabled = false;
+      textarea.focus();
+
+    } catch (error) {
+      console.error('Error:', error);
+      textarea.value = 'Error occurred. Please try again.';
+      textarea.disabled = false;
+      submitButton.disabled = false;
+      isProcessingTurn = false;
+      setTimeout(() => {
+        textarea.value = prompt;
+        textarea.focus();
+      }, 2000);
+    }
+  }
+}
+
 // Update the createFloatingButton function to initialize audio context on click
 function createFloatingButton() {
   // Create main container
@@ -332,13 +498,13 @@ function createFloatingButton() {
   const inputContainer = document.createElement('div');
   inputContainer.className = 'ai-input-container';
   
-  // Create textarea
-  const textarea = document.createElement('textarea');
+  // Create textarea (now using global variable)
+  textarea = document.createElement('textarea');
   textarea.className = 'ai-input-field';
   textarea.placeholder = 'Enter your prompt here...';
   
-  // Create submit button
-  const submitButton = document.createElement('button');
+  // Create submit button (now using global variable)
+  submitButton = document.createElement('button');
   submitButton.className = 'ai-submit-button';
   submitButton.textContent = 'Submit';
   
@@ -355,82 +521,6 @@ function createFloatingButton() {
   });
 
   // Handle submit button click
-  async function handleSubmit() {
-    const prompt = textarea.value.trim();
-    if (prompt) {
-      try {
-        // Show loading state
-        textarea.disabled = true;
-        submitButton.disabled = true;
-        textarea.value = 'Processing...';
-
-        // Set processing flag
-        isProcessingTurn = true;
-
-        // Initial API call with user prompt
-        let response = await sendToAPI(prompt);
-
-        // Continue processing until end_turn is true
-        while (isProcessingTurn) {
-          // Process text blocks
-          const textBlocks = response.content.filter(block => block.type === 'text');
-          const toolBlocks = response.content.filter(block => block.type === 'tool_use');
-          
-          // Process text blocks
-          const audioPromises = textBlocks.map(block => {
-            const card = createMessageCard(block);
-            appendMessageCard(card);
-            return textToSpeech(block.content.text);
-          });
-
-          // Process tool blocks
-          const toolPromises = toolBlocks.map(async block => {
-            const card = createMessageCard(block);
-            appendMessageCard(card);
-            
-            if (block.content.name && block.content.input) {
-              const instruction = {
-                action: block.content.name,
-                ...block.content.input
-              };
-              // Pass tool_use_id to executeInstruction
-              await executeInstruction(instruction, block.id);
-            }
-          });
-
-          // Wait for all operations to complete
-          await Promise.all([...audioPromises, ...toolPromises]);
-
-          // Break the loop if end_turn is true
-          if (response.end_turn) {
-            isProcessingTurn = false;
-            break;
-          }
-
-          // Make another API call with any pending tool results
-          response = await sendToAPI(prompt, true);
-        }
-
-        // Clear and re-enable inputs
-        textarea.value = '';
-        textarea.disabled = false;
-        submitButton.disabled = false;
-        textarea.focus();
-
-      } catch (error) {
-        console.error('Error:', error);
-        textarea.value = 'Error occurred. Please try again.';
-        textarea.disabled = false;
-        submitButton.disabled = false;
-        isProcessingTurn = false;
-        setTimeout(() => {
-          textarea.value = prompt;
-          textarea.focus();
-        }, 2000);
-      }
-    }
-  }
-
   submitButton.addEventListener('click', handleSubmit);
 
   // Handle textarea enter key
