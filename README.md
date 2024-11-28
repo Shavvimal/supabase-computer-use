@@ -15,11 +15,6 @@ Customer Success, Solution Engineers and FDE's are innundated with questions. Us
    - If not relevant, rewrite the query and retry
    - Generate as detailed instructions for Computer Use to use the GUI
 
-
-
-
-![img.png](api/img.png)
-
 1. Add Anthropic-defined computer use tools to your API request, as well as the user prompt
 2. Claude loads the stored computer use tool definitions and assesses if any tools can help with the user’s query.
    - If yes, Claude constructs a properly formatted tool use request.
